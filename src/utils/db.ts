@@ -47,61 +47,115 @@ export async function requestPersistentStorage(): Promise<boolean> {
 /**
  * Duplicate Detector:
  * Checks whether an incoming model already exists in the library.
+ * Normalize model name by removing extensions, Windows/Mac copy suffixes (" (1)", " - Copy", etc.),
+ * and standardizing spacing and casing.
+ */
+export function normalizeModelName(name: string): string {
+  let clean = (name || '').toLowerCase().replace(/\.(glb|gltf|zip)$/i, '').trim();
+  // Strip repeated copy suffixes like (1), (2), - copy, _copy
+  let prev = '';
+  while (clean !== prev) {
+    prev = clean;
+    clean = clean
+      .replace(/\s*\(\d+\)$/i, '')
+      .replace(/[\s_-]+copy\d*$/i, '')
+      .trim();
+  }
+  return clean.replace(/[_\s-]+/g, ' ').trim();
+}
+
+/**
+ * Normalize original file name (e.g. "model (1).glb" -> "model.glb").
+ */
+export function normalizeFileName(fileName: string): string {
+  const extMatch = (fileName || '').match(/\.(glb|gltf|zip)$/i);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '';
+  const base = ext ? fileName.slice(0, -ext.length) : fileName;
+  const normBase = normalizeModelName(base);
+  return normBase ? `${normBase}${ext}` : (fileName || '').toLowerCase().trim();
+}
+
 /**
  * Robust duplicate check for 3D models:
- * Matches by unique original fileName, normalized name, or exact size + name.
+ * Matches by normalized unique fileName, normalized model name, or exact file size in bytes.
  */
 export function checkIsDuplicate(
   existingModels: ModelItem[],
   candidate: { name: string; fileName?: string; size: number }
 ): { isDuplicate: boolean; duplicateOf?: ModelItem; reason?: string } {
-  const normalize = (name: string) =>
-    (name || '')
-      .toLowerCase()
-      .replace(/\.(glb|gltf)$/i, '')
-      .replace(/[_\s-]+/g, ' ')
-      .trim();
-
-  const candidateFile = (candidate.fileName || candidate.name || '').toLowerCase().trim();
-  const candidateNorm = normalize(candidate.name || candidate.fileName || '');
+  const candidateNorm = normalizeModelName(candidate.name || candidate.fileName || '');
+  const candidateFile = normalizeFileName(candidate.fileName || candidate.name || '');
 
   for (const existing of existingModels) {
-    const existingFile = (existing.fileName || existing.name || '').toLowerCase().trim();
-    const existingNorm = normalize(existing.name || existing.fileName || '');
+    const existingNorm = normalizeModelName(existing.name || existing.fileName || '');
+    const existingFile = normalizeFileName(existing.fileName || existing.name || '');
 
-    // 1. Exact unique file name collision (e.g. space_shuttle.glb == space_shuttle.glb)
+    // 1. Exact or normalized unique file name collision (e.g. "model.glb" == "model (1).glb")
     if (candidateFile && existingFile && candidateFile === existingFile) {
       return {
         isDuplicate: true,
         duplicateOf: existing,
-        reason: `File "${candidate.fileName || candidate.name}" is already in your library as "${existing.name}"`,
+        reason: `You already imported this file into system ("${existing.name}")`,
       };
     }
 
-    // 2. Exact normalized name match
-    if (existingNorm === candidateNorm) {
+    // 2. Exact normalized model name match
+    if (candidateNorm && existingNorm && candidateNorm === existingNorm) {
       return {
         isDuplicate: true,
         duplicateOf: existing,
-        reason: `Model with name "${existing.name}" is already in your library`,
+        reason: `You already imported this file into system ("${existing.name}")`,
       };
     }
 
-    // 3. Exact size and close name match
+    // 3. Exact byte size match for non-empty files
     if (
       candidate.size > 0 &&
-      existing.size === candidate.size &&
-      (existingNorm.includes(candidateNorm) || candidateNorm.includes(existingNorm))
+      existing.size > 0 &&
+      candidate.size === existing.size
     ) {
       return {
         isDuplicate: true,
         duplicateOf: existing,
-        reason: `Identical file (${(existing.size / (1024 * 1024)).toFixed(1)} MB) already exists as "${existing.name}"`,
+        reason: `You already imported this file into system (identical ${(existing.size / (1024 * 1024)).toFixed(2)} MB file as "${existing.name}")`,
       };
     }
   }
 
   return { isDuplicate: false };
+}
+
+/**
+ * Manage explicitly deleted models in localStorage so default fleet models
+ * don't resurrect if deleted, but stay present across cloud re-syncs.
+ */
+export function recordDeletedModelId(id: string): void {
+  try {
+    const raw = localStorage.getItem('voxelorbit_deleted_models');
+    const set = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+    set.add(id);
+    localStorage.setItem('voxelorbit_deleted_models', JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('Failed to record deleted model id:', e);
+  }
+}
+
+export function getDeletedModelIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('voxelorbit_deleted_models');
+    if (raw) return new Set<string>(JSON.parse(raw));
+  } catch (e) {
+    console.warn('Failed to read deleted model ids:', e);
+  }
+  return new Set<string>();
+}
+
+export function clearDeletedModelIds(): void {
+  try {
+    localStorage.removeItem('voxelorbit_deleted_models');
+  } catch (e) {
+    console.warn('Failed to clear deleted model ids:', e);
+  }
 }
 
 /**

@@ -238,16 +238,60 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   };
 
 
-  const handleDownload = (e: React.MouseEvent, model: ModelItem) => {
+  const handleDownload = async (e: React.MouseEvent, model: ModelItem) => {
     e.stopPropagation();
-    if (!model.fileUrl) return;
-    const a = document.createElement('a');
-    a.href = model.fileUrl;
+    if (!model.fileUrl && !model.fileBlob) return;
     const filename = model.fileName || (model.name.toLowerCase().endsWith('.glb') ? model.name : `${model.name}.glb`);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+
+    try {
+      // 1. If we already have the local File/Blob in memory, use it directly (instant & offline)
+      if (model.fileBlob) {
+        const blobUrl = URL.createObjectURL(model.fileBlob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+        return;
+      }
+
+      // 2. If it's already a blob: or data: URL, trigger download
+      if (model.fileUrl && (model.fileUrl.startsWith('blob:') || model.fileUrl.startsWith('data:'))) {
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = model.fileUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      // 3. For remote / Firebase Storage URLs, fetch as blob so browser triggers download without reloading page
+      if (model.fileUrl) {
+        const res = await fetch(model.fileUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      }
+    } catch (err) {
+      console.warn('Direct blob download failed, opening in new tab fallback:', err);
+      // Fallback: strictly open in new window/tab so the current 3D portal state is never disrupted
+      if (model.fileUrl) {
+        window.open(model.fileUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
   };
 
   const hasAnyNewModels = models.some((m) => isModelNew(m));

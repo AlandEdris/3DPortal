@@ -49,11 +49,19 @@ import {
   checkIsDuplicate,
   checkServerStatus,
   requestPersistentStorage,
+  recordDeletedModelId,
+  getDeletedModelIds,
+  clearDeletedModelIds,
 } from './utils/db';
-import { Upload, AlertCircle } from 'lucide-react';
+import { Upload, AlertCircle, Check } from 'lucide-react';
 
 export default function App() {
   const [models, setModels] = useState<ModelItem[]>([]);
+  const modelsRef = useRef<ModelItem[]>(models);
+  useEffect(() => {
+    modelsRef.current = models;
+  }, [models]);
+
   const [currentModel, setCurrentModel] = useState<ModelItem | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [dbStatus, setDbStatus] = useState<{ online: boolean; message: string }>({
@@ -120,7 +128,7 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
   const [globalDragActive, setGlobalDragActive] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'info' | 'error' | 'success' } | null>(null);
 
   const dragCounter = useRef(0);
 
@@ -150,11 +158,11 @@ export default function App() {
     (currentUser?.uid ? userProfiles[currentUser.uid] : null);
 
   // Toast notification helper
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
+  const showToast = useCallback((msg: string, type: 'info' | 'error' | 'success' = 'info') => {
+    setToast({ message: msg, type });
     setTimeout(() => {
-      setToastMessage((prev) => (prev === msg ? null : prev));
-    }, 4000);
+      setToast((prev) => (prev?.message === msg ? null : prev));
+    }, type === 'error' ? 6000 : 4000);
   }, []);
 
   const handleSignOut = useCallback(async () => {
@@ -193,6 +201,7 @@ export default function App() {
         if (isCancelled) return;
 
         const isInitialized = localStorage.getItem('voxelorbit_db_initialized') === 'true';
+        const deletedIds = getDeletedModelIds();
 
         // Filter out any legacy synthetic/procedural models ("Cyber_Stealth_Drone", etc.)
         const validStored = (storedModels || []).filter(
@@ -204,9 +213,29 @@ export default function App() {
             m.name !== 'Holo_Crystal_Array'
         );
 
-        if (validStored && validStored.length > 0) {
-          setModels(validStored);
-          setCurrentModel(validStored[0]);
+        // Retain default models that have not been explicitly deleted by the user
+        const nonDeletedDefaults = DEFAULT_AIRCRAFT_MODELS.filter((dm) => !deletedIds.has(dm.id));
+
+        // Merge: validStored with nonDeletedDefaults
+        const mergedMap = new Map<string, ModelItem>();
+        for (const dm of nonDeletedDefaults) {
+          mergedMap.set(dm.id, dm);
+        }
+        for (const m of validStored) {
+          if (!deletedIds.has(m.id)) {
+            mergedMap.set(m.id, m);
+          }
+        }
+
+        const initialList = Array.from(mergedMap.values());
+
+        if (initialList.length > 0) {
+          setModels(initialList);
+          setCurrentModel(initialList[0]);
+          for (const s of nonDeletedDefaults) {
+            saveModelToDB(s).catch(() => {});
+          }
+          localStorage.setItem('voxelorbit_db_initialized', 'true');
         } else if (!isInitialized) {
           // Initialize with real aircraft GLB models from the provided archives on first launch
           setModels(DEFAULT_AIRCRAFT_MODELS);
@@ -250,12 +279,41 @@ export default function App() {
     const unsubscribe = subscribeToCloudModels(
       (cloudModels) => {
         if (cloudModels && cloudModels.length > 0) {
-          setModels(cloudModels);
+          const deletedIds = getDeletedModelIds();
+          const nonDeletedDefaults = DEFAULT_AIRCRAFT_MODELS.filter((dm) => !deletedIds.has(dm.id));
+
+          setModels((prev) => {
+            const mergedMap = new Map<string, ModelItem>();
+
+            // 1. Maintain active default aircraft fleet
+            for (const dm of nonDeletedDefaults) {
+              mergedMap.set(dm.id, dm);
+            }
+
+            // 2. Retain existing local models (preserve in-memory fileBlob)
+            for (const m of prev) {
+              if (!deletedIds.has(m.id)) {
+                mergedMap.set(m.id, m);
+              }
+            }
+
+            // 3. Merge authoritative cloud models from Firestore
+            for (const cm of cloudModels) {
+              if (!deletedIds.has(cm.id)) {
+                const existing = mergedMap.get(cm.id);
+                mergedMap.set(cm.id, existing?.fileBlob ? { ...cm, fileBlob: existing.fileBlob } : cm);
+              }
+            }
+
+            return Array.from(mergedMap.values());
+          });
+
           setCurrentModel((prev) => {
             if (!prev) return cloudModels[0];
             const match = cloudModels.find((m) => m.id === prev.id);
-            return match || cloudModels[0];
+            return match || prev;
           });
+
           // Cache in local IndexedDB for fast offline startup
           for (const cm of cloudModels) {
             saveModelToDB(cm).catch(() => {});
@@ -374,25 +432,24 @@ export default function App() {
       }
 
       const newItems: ModelItem[] = [];
-      const skippedDuplicates: string[] = [];
+      const duplicateErrors: string[] = [];
 
       // Check each candidate file against duplicates
       for (const file of glbOrGltfFiles) {
-        const duplicateCheck = checkIsDuplicate([...models, ...newItems], {
+        const pool = [...modelsRef.current, ...newItems, ...DEFAULT_AIRCRAFT_MODELS];
+        const duplicateCheck = checkIsDuplicate(pool, {
           name: file.name,
           fileName: file.name,
           size: file.size,
         });
 
         if (duplicateCheck.isDuplicate) {
-          skippedDuplicates.push(file.name);
+          duplicateErrors.push(file.name);
           const creatorDisplayName =
             activeUserNickname?.trim() ||
             currentUser?.email ||
             'Authorized User';
-          const reasonMsg = duplicateCheck.duplicateOf
-            ? `File "${file.name}" was not imported because of duplication with existing model "${duplicateCheck.duplicateOf.fileName || duplicateCheck.duplicateOf.name}".`
-            : `File "${file.name}" was not imported because of duplication.`;
+          const reasonMsg = duplicateCheck.reason || `You already imported this file into system ("${file.name}")`;
 
           if (isCloudConfigured()) {
             logActivity(
@@ -472,17 +529,20 @@ export default function App() {
       }
 
       // User feedback on imported items and duplicates
-      if (newItems.length > 0 && skippedDuplicates.length > 0) {
+      if (duplicateErrors.length > 0 && newItems.length === 0) {
         showToast(
-          `Imported ${newItems.length} model(s). Notice: ${skippedDuplicates.length} file(s) not imported because of duplication: ${skippedDuplicates.join(', ')}`
+          `Error: you already imported this file into system (${duplicateErrors.join(', ')})`,
+          'error'
+        );
+      } else if (newItems.length > 0 && duplicateErrors.length > 0) {
+        showToast(
+          `Imported ${newItems.length} model(s). Error: you already imported this file into system: ${duplicateErrors.join(', ')}`,
+          'error'
         );
       } else if (newItems.length > 0) {
         showToast(
-          `Successfully saved ${newItems.length} 3D model${newItems.length > 1 ? 's' : ''} to database!`
-        );
-      } else if (skippedDuplicates.length > 0) {
-        showToast(
-          `This file is not imported because of duplication: ${skippedDuplicates.join(', ')}`
+          `Successfully saved ${newItems.length} 3D model${newItems.length > 1 ? 's' : ''} to database!`,
+          'success'
         );
       }
     },
@@ -500,14 +560,15 @@ export default function App() {
           : `${resolvedName}.glb`;
 
         // Check if candidate name is duplicate
-        const duplicateCheck = checkIsDuplicate(models, {
+        const pool = [...modelsRef.current, ...DEFAULT_AIRCRAFT_MODELS];
+        const duplicateCheck = checkIsDuplicate(pool, {
           name: cleanName,
           fileName: cleanName,
           size: 0,
         });
         if (duplicateCheck.isDuplicate) {
-          const reasonMsg = `This file is not imported because of duplication: "${cleanName}"`;
-          showToast(reasonMsg);
+          const reasonMsg = duplicateCheck.reason || `Error: you already imported this file into system ("${cleanName}")`;
+          showToast(reasonMsg, 'error');
           if (isCloudConfigured()) {
             logActivity(
               'duplicate_skipped',
@@ -515,7 +576,7 @@ export default function App() {
               cleanName,
               activeUserNickname?.trim() || currentUser?.email || 'Authorized User',
               currentUser?.uid,
-              `File "${cleanName}" was not imported because of duplication.`
+              reasonMsg
             ).catch(console.warn);
           }
           return false;
@@ -526,14 +587,14 @@ export default function App() {
         const blob = await res.blob();
 
         // Check with actual size
-        const sizeCheck = checkIsDuplicate(models, {
+        const sizeCheck = checkIsDuplicate(pool, {
           name: cleanName,
           fileName: cleanName,
           size: blob.size,
         });
         if (sizeCheck.isDuplicate) {
-          const reasonMsg = `This file is not imported because of duplication: "${cleanName}" (${(blob.size / (1024 * 1024)).toFixed(1)} MB)`;
-          showToast(reasonMsg);
+          const reasonMsg = sizeCheck.reason || `Error: you already imported this file into system ("${cleanName}")`;
+          showToast(reasonMsg, 'error');
           if (isCloudConfigured()) {
             logActivity(
               'duplicate_skipped',
@@ -541,7 +602,7 @@ export default function App() {
               cleanName,
               activeUserNickname?.trim() || currentUser?.email || 'Authorized User',
               currentUser?.uid,
-              `File "${cleanName}" was not imported because of duplication.`
+              reasonMsg
             ).catch(console.warn);
           }
           return false;
@@ -687,6 +748,7 @@ export default function App() {
 
       try {
         await deleteModelFromDB(id);
+        recordDeletedModelId(id);
       } catch (err) {
         console.error('Failed to delete model from DB:', err);
       }
@@ -788,6 +850,7 @@ export default function App() {
   const handleLoadDefaults = useCallback(async () => {
     showToast('Restoring real aircraft fleet...');
     localStorage.setItem('voxelorbit_db_initialized', 'true');
+    clearDeletedModelIds();
     for (const m of DEFAULT_AIRCRAFT_MODELS) {
       await saveModelToDB(m);
       if (isCloudConfigured()) {
@@ -802,7 +865,7 @@ export default function App() {
     if (DEFAULT_AIRCRAFT_MODELS.length > 0) {
       setCurrentModel(DEFAULT_AIRCRAFT_MODELS[0]);
     }
-    showToast('10 real aircraft GLBs restored and saved in database!');
+    showToast('10 real aircraft GLBs restored and saved in database!', 'success');
   }, [showToast]);
 
   // 8. Analysis Update from Viewer3D
@@ -1208,10 +1271,25 @@ export default function App() {
       />
 
       {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-neutral-900/95 border border-neutral-700/80 rounded-xl shadow-2xl text-xs font-medium text-neutral-100 flex items-center gap-2 backdrop-blur-md animate-fade-in max-w-md text-center">
-          <AlertCircle className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-          <span>{toastMessage}</span>
+      {toast && (
+        <div
+          id="toast-notification-banner"
+          className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2.5 backdrop-blur-md animate-fade-in max-w-lg text-left ${
+            toast.type === 'error'
+              ? 'bg-rose-950/95 border border-rose-600/90 text-rose-100 shadow-rose-950/60 ring-1 ring-rose-500/40'
+              : toast.type === 'success'
+              ? 'bg-emerald-950/95 border border-emerald-600/90 text-emerald-100 shadow-emerald-950/60'
+              : 'bg-neutral-900/95 border border-neutral-700/80 text-neutral-100 shadow-neutral-950/60'
+          }`}
+        >
+          {toast.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          ) : toast.type === 'success' ? (
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-sky-400 shrink-0" />
+          )}
+          <span className="leading-snug">{toast.message}</span>
         </div>
       )}
     </div>
