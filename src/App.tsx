@@ -995,6 +995,7 @@ export default function App() {
           }}
           isOpen={isLibraryOpen}
           onClose={() => setIsLibraryOpen(false)}
+          onOpen={() => setIsLibraryOpen(true)}
           onLoadDefaults={handleLoadDefaults}
           onOpenCloudModal={() => setIsCloudModalOpen(true)}
           userProfiles={userProfiles}

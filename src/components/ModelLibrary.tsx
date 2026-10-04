@@ -19,6 +19,8 @@ import {
   Clock,
   Gamepad2,
   BadgeCheck,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ModelItem, formatModelDisplayName } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
@@ -36,6 +38,7 @@ interface ModelLibraryProps {
   onOpenCloudModal?: () => void;
   isOpen: boolean;
   onClose: () => void;
+  onOpen?: () => void;
   onLoadDefaults: () => void;
   userProfiles?: Record<string, string>;
   currentUser?: { uid?: string; email?: string | null; displayName?: string | null } | null;
@@ -55,6 +58,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   onOpenCloudModal,
   isOpen,
   onClose,
+  onOpen,
   onLoadDefaults,
   userProfiles,
   currentUser,
@@ -165,10 +169,27 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     document.body.removeChild(a);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return (
+      <aside className="fixed left-0 top-20 z-30 select-none animate-fade-in">
+        <button
+          id="btn-vs-toolbox-tab"
+          onClick={onOpen}
+          className="group flex flex-col items-center gap-2 py-3 px-1.5 bg-neutral-950/95 hover:bg-neutral-900 text-neutral-400 hover:text-sky-400 border border-neutral-800 border-l-0 rounded-r-xl shadow-2xl backdrop-blur-md transition-all cursor-pointer hover:shadow-sky-950/40 hover:border-sky-500/50"
+          title="Expand Model Library (VS Toolbox)"
+        >
+          <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-transform" />
+          <FileBox className="w-4 h-4 text-sky-400" />
+          <span className="text-[11px] font-semibold tracking-wider uppercase [writing-mode:vertical-rl] rotate-180 py-2 text-neutral-300 group-hover:text-white font-mono">
+            Model Library ({models.length})
+          </span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
-    <aside className="fixed inset-y-14 left-0 w-84 bg-neutral-950/95 border-r border-neutral-800 z-30 flex flex-col backdrop-blur-md transition-all shadow-2xl">
+    <aside className="fixed inset-y-14 left-0 w-84 bg-neutral-950/95 border-r border-neutral-800 z-30 flex flex-col backdrop-blur-md transition-all shadow-2xl animate-fade-in">
       {/* Header */}
       <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -178,17 +199,21 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
         </div>
         <div className="flex items-center gap-1.5">
           <button
+            id="btn-export-library"
             onClick={() => exportModelsMetadataJSON(models)}
-            className="p-1 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 transition-colors"
+            className="p-1 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 transition-colors cursor-pointer"
             title="Export Database Backup (JSON)"
           >
             <ArrowDownToLine className="w-4 h-4" />
           </button>
+          {/* Collapse button next to the download button */}
           <button
+            id="btn-collapse-sidebar"
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-200 p-1 rounded-md hover:bg-neutral-900 transition-colors md:hidden"
+            className="p-1 rounded-md text-neutral-400 hover:text-sky-400 hover:bg-neutral-900 transition-colors cursor-pointer"
+            title="Collapse Sidebar to Left (VS Toolbox style)"
           >
-            <X className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
         </div>
       </div>
