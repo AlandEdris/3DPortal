@@ -319,9 +319,13 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
               <div
                 key={model.id}
                 onClick={() => onSelectModel(model)}
-                className={`group relative p-2.5 rounded-xl border cursor-pointer transition-all ${
+                className={`group relative p-2.5 rounded-xl border cursor-pointer transition-all overflow-hidden ${
                   isSelected
-                    ? 'bg-neutral-900 border-sky-500/60 shadow-lg shadow-sky-950/20 ring-1 ring-sky-500/30'
+                    ? model.inNeoGame
+                      ? 'bg-gradient-to-l from-emerald-900/40 via-emerald-950/20 to-neutral-900 border-emerald-500/60 shadow-lg shadow-emerald-950/20 ring-1 ring-emerald-500/30'
+                      : 'bg-neutral-900 border-sky-500/60 shadow-lg shadow-sky-950/20 ring-1 ring-sky-500/30'
+                    : model.inNeoGame
+                    ? 'bg-gradient-to-l from-emerald-900/25 via-emerald-950/10 to-neutral-900/40 border-neutral-800/90 hover:border-emerald-500/40 hover:from-emerald-900/35'
                     : 'bg-neutral-900/40 border-neutral-800/80 hover:bg-neutral-900/80 hover:border-neutral-700'
                 }`}
               >
@@ -336,12 +340,6 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                       />
                     ) : (
                       <Plane className="w-5 h-5 text-sky-400/80" />
-                    )}
-                    {model.inNeoGame && (
-                      <span
-                        className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-neutral-950 shadow-sm shadow-emerald-400"
-                        title="Added to Neo Game"
-                      />
                     )}
                   </div>
 
@@ -392,15 +390,6 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                           >
                             {formatModelDisplayName(model.name)}
                           </p>
-                          {model.inNeoGame && (
-                            <span
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 shadow-sm shadow-emerald-950"
-                              title={`Verified in Neo Game roster (${model.neoGameAddedBy || 'Team'})`}
-                            >
-                              <Gamepad2 className="w-2.5 h-2.5" />
-                              IN GAME
-                            </span>
-                          )}
                         </div>
 
                         <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 mt-1 font-mono">
@@ -409,10 +398,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                           <span>{formatTriangles(model.metrics?.triangles || 0)} tris</span>
                         </div>
 
-                        {/* Author, Timestamp & Neo Game Marker Checkbox */}
-                        <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-neutral-400 mt-1.5 pt-1.5 border-t border-neutral-800/60">
+                        {/* Author, Timestamp & Marker Checkbox on the exact SAME ROW */}
+                        <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 mt-1.5 pt-1.5 border-t border-neutral-800/60 whitespace-nowrap overflow-hidden">
                           <div
-                            className="flex items-center gap-1 truncate max-w-[100px]"
+                            className="flex items-center gap-1 truncate max-w-[80px] shrink min-w-0"
                             title={`Added by: ${getModelCreatorDisplayName(model, userProfiles, currentUser)}`}
                           >
                             <User className="w-3 h-3 text-sky-400 shrink-0" />
@@ -420,7 +409,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                               {getModelCreatorDisplayName(model, userProfiles, currentUser)}
                             </span>
                           </div>
-                          <span className="text-neutral-600">·</span>
+                          <span className="text-neutral-600 shrink-0">·</span>
                           <div
                             className="flex items-center gap-1 shrink-0 text-neutral-400"
                             title={new Date(model.createdAt).toLocaleString()}
@@ -433,15 +422,15 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                               })}
                             </span>
                           </div>
-                          <span className="text-neutral-600">·</span>
-                          {/* Marker Checkbox next to Created Date */}
+                          <span className="text-neutral-600 shrink-0">·</span>
+                          {/* Checkbox directly next to date */}
                           <label
                             onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1 cursor-pointer select-none px-1 py-0.5 rounded hover:bg-neutral-800/80 transition-colors shrink-0 group/marker"
+                            className="inline-flex items-center cursor-pointer select-none p-0.5 rounded hover:bg-neutral-800/80 transition-colors shrink-0"
                             title={
                               model.inNeoGame
-                                ? `Added to Our Neo Game by ${model.neoGameAddedBy || 'Team'}${model.neoGameAddedAt ? ` on ${new Date(model.neoGameAddedAt).toLocaleDateString()}` : ''}`
-                                : 'Check this box to mark plane as added to Our Neo Game'
+                                ? `Added to Our Neo Game (${model.neoGameAddedBy || 'Team'}) - Click to unmark`
+                                : 'Mark as added to Our Neo Game'
                             }
                           >
                             <input
@@ -451,15 +440,6 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                               onChange={() => onToggleNeoGame?.(model.id)}
                               className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-950 text-emerald-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-emerald-500 shrink-0"
                             />
-                            <span
-                              className={`text-[10px] font-medium transition-colors ${
-                                model.inNeoGame
-                                  ? 'text-emerald-400 font-semibold'
-                                  : 'text-neutral-500 group-hover/marker:text-neutral-400'
-                              }`}
-                            >
-                              Neo Game
-                            </span>
                           </label>
                         </div>
                       </>
