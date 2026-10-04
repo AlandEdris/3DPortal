@@ -19,6 +19,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  updateProfile,
   User,
   Auth,
 } from 'firebase/auth';
@@ -45,6 +46,7 @@ export const DEFAULT_FIREBASE_CONFIG: FirebaseOptions = {
 const STORAGE_KEY = 'voxelorbit_firebase_config';
 const COLLECTION_MODELS = 'voxelorbit_models';
 const COLLECTION_LOGS = 'voxelorbit_activity_logs';
+const COLLECTION_USERS = 'voxelorbit_users';
 
 let appInstance: FirebaseApp | null = null;
 let firestoreInstance: Firestore | null = null;
@@ -212,6 +214,135 @@ export function subscribeToAuth(callback: (user: User | null) => void): Unsubscr
 export function getCurrentFirebaseUser(): User | null {
   const auth = getFirebaseAuth();
   return auth ? auth.currentUser : null;
+}
+
+/**
+ * Update the current user's Nickname in Firebase Auth and Firestore.
+ */
+export async function updateUserNickname(
+  nickname: string
+): Promise<{ success: boolean; error?: string }> {
+  const auth = getFirebaseAuth();
+  const user = auth?.currentUser;
+  if (!user) {
+    return { success: false, error: 'No user is currently signed in.' };
+  }
+
+  const trimmed = nickname.trim();
+  try {
+    // 1. Update Firebase Auth displayName
+    await updateProfile(user, { displayName: trimmed });
+
+    // 2. Update Firestore user profile
+    const db = getFirestoreDB();
+    if (db) {
+      const userDocRef = doc(db, COLLECTION_USERS, user.uid);
+      await setDoc(
+        userDocRef,
+        {
+          uid: user.uid,
+          email: user.email || '',
+          nickname: trimmed,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+    }
+
+    // 3. Cache in localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`voxelorbit_nick_${user.uid}`, trimmed);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to update user nickname:', err);
+    return { success: false, error: err.message || 'Could not update nickname.' };
+  }
+}
+
+/**
+ * Subscribe to all user profiles in Firestore (maps uid -> nickname, and email -> nickname).
+ */
+export function subscribeToUserProfiles(
+  onUpdate: (profiles: Record<string, string>) => void
+): Unsubscribe | null {
+  const db = getFirestoreDB();
+  if (!db) return null;
+
+  try {
+    const colRef = collection(db, COLLECTION_USERS);
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const map: Record<string, string> = {};
+        snapshot.forEach((d) => {
+          const data = d.data();
+          if (data.nickname) {
+            map[d.id] = data.nickname;
+            if (data.email) {
+              map[data.email.toLowerCase()] = data.nickname;
+            }
+          }
+        });
+        onUpdate(map);
+      },
+      (err) => {
+        console.warn('User profiles subscription warning:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Could not establish user profiles listener:', err);
+    return null;
+  }
+}
+
+/**
+ * Resolve display name for a plane's creator:
+ * If the user has a Nickname, return Nickname.
+ * If Nickname is null/empty, return Email.
+ */
+export function getModelCreatorDisplayName(
+  model: { createdBy?: string; createdById?: string } | null | undefined,
+  userProfiles?: Record<string, string>,
+  currentUser?: { uid?: string; email?: string | null; displayName?: string | null } | null
+): string {
+  if (!model) return 'Default System';
+
+  // 1. If createdById matches a known profile in userProfiles
+  if (model.createdById && userProfiles && userProfiles[model.createdById]) {
+    return userProfiles[model.createdById];
+  }
+
+  // 2. If createdById matches the current user
+  if (currentUser && model.createdById && model.createdById === currentUser.uid) {
+    if (currentUser.displayName && currentUser.displayName.trim()) {
+      return currentUser.displayName.trim();
+    }
+    if (currentUser.email) {
+      return currentUser.email;
+    }
+  }
+
+  // 3. If createdBy is an email and that email has a nickname in userProfiles
+  if (model.createdBy && userProfiles && userProfiles[model.createdBy.toLowerCase()]) {
+    return userProfiles[model.createdBy.toLowerCase()];
+  }
+
+  // 4. If createdBy is a valid email or custom name (not generic 'Authorized User')
+  if (model.createdBy && model.createdBy !== 'Authorized User') {
+    return model.createdBy;
+  }
+
+  // 5. Fallback for the current user if createdBy is 'Authorized User'
+  if (currentUser?.displayName && currentUser.displayName.trim()) {
+    return currentUser.displayName.trim();
+  }
+  if (currentUser?.email) {
+    return currentUser.email;
+  }
+
+  return model.createdBy || 'Default System';
 }
 
 /**

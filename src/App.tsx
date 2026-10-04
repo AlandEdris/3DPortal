@@ -17,6 +17,7 @@ import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { CloudConfigModal } from './components/CloudConfigModal';
 import { LoginPage } from './components/LoginPage';
 import { ActivityLogsModal } from './components/ActivityLogsModal';
+import { UserProfileModal } from './components/UserProfileModal';
 import {
   isCloudConfigured,
   subscribeToCloudModels,
@@ -26,6 +27,7 @@ import {
   getFirebaseConfig,
   subscribeToAuth,
   signOutUser,
+  subscribeToUserProfiles,
 } from './utils/firebase';
 import type { User } from 'firebase/auth';
 import {
@@ -113,6 +115,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isActivityLogsOpen, setIsActivityLogsOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
   const [globalDragActive, setGlobalDragActive] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -128,6 +132,20 @@ export default function App() {
       if (unsub) unsub();
     };
   }, []);
+
+  // Subscribe to User Profiles in Firestore
+  useEffect(() => {
+    const unsub = subscribeToUserProfiles((profiles) => {
+      setUserProfiles(profiles);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
+  const activeUserNickname =
+    currentUser?.displayName ||
+    (currentUser?.uid ? userProfiles[currentUser.uid] : null);
 
   // Toast notification helper
   const showToast = useCallback((msg: string) => {
@@ -370,6 +388,11 @@ export default function App() {
 
         const url = URL.createObjectURL(file);
         const id = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const creatorDisplayName =
+          activeUserNickname?.trim() ||
+          currentUser?.email ||
+          'Authorized User';
+
         const newItem: ModelItem = {
           id,
           name: file.name,
@@ -378,7 +401,7 @@ export default function App() {
           fileBlob: file,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          createdBy: currentUser?.email || 'Authorized User',
+          createdBy: creatorDisplayName,
           createdById: currentUser?.uid || '',
           metrics: {
             triangles: 0,
@@ -397,7 +420,7 @@ export default function App() {
         if (isCloudConfigured()) {
           saveModelToCloud(
             newItem,
-            currentUser?.email || 'Authorized User',
+            creatorDisplayName,
             currentUser?.uid
           ).catch((err) =>
             console.warn('Cloud sync error on upload:', err)
@@ -465,6 +488,10 @@ export default function App() {
 
         const fileUrl = URL.createObjectURL(blob);
         const id = `url-${Date.now()}`;
+        const creatorDisplayName =
+          activeUserNickname?.trim() ||
+          currentUser?.email ||
+          'Authorized User';
 
         const newItem: ModelItem = {
           id,
@@ -474,7 +501,7 @@ export default function App() {
           fileBlob: blob,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          createdBy: currentUser?.email || 'Authorized User',
+          createdBy: creatorDisplayName,
           createdById: currentUser?.uid || '',
           metrics: {
             triangles: 0,
@@ -492,7 +519,7 @@ export default function App() {
         if (isCloudConfigured()) {
           saveModelToCloud(
             newItem,
-            currentUser?.email || 'Authorized User',
+            creatorDisplayName,
             currentUser?.uid
           ).catch((err) =>
             console.warn('Cloud sync error on import:', err)
@@ -751,7 +778,9 @@ export default function App() {
         onToggleFullscreen={handleToggleFullscreen}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
         onOpenActivityLogs={() => setIsActivityLogsOpen(true)}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
         userEmail={currentUser?.email}
+        userNickname={activeUserNickname}
         onSignOut={handleSignOut}
         dbStatus={dbStatus}
       />
@@ -781,6 +810,8 @@ export default function App() {
           onClose={() => setIsLibraryOpen(false)}
           onLoadDefaults={handleLoadDefaults}
           onOpenCloudModal={() => setIsCloudModalOpen(true)}
+          userProfiles={userProfiles}
+          currentUser={currentUser}
           dbStatus={dbStatus}
         />
 
@@ -912,6 +943,8 @@ export default function App() {
           onRenameModel={handleRenameModel}
           onDeleteModel={handleDeleteModel}
           onRequestDelete={(model) => setModelToDelete(model)}
+          userProfiles={userProfiles}
+          currentUser={currentUser}
         />
       </main>
 
@@ -964,6 +997,24 @@ export default function App() {
       <ActivityLogsModal
         isOpen={isActivityLogsOpen}
         onClose={() => setIsActivityLogsOpen(false)}
+      />
+
+      {/* User Profile & Nickname Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        onSignOut={handleSignOut}
+        onNicknameUpdated={(newNick) => {
+          if (currentUser) {
+            setUserProfiles((prev) => ({
+              ...prev,
+              [currentUser.uid]: newNick,
+              ...(currentUser.email ? { [currentUser.email.toLowerCase()]: newNick } : {}),
+            }));
+          }
+          showToast(newNick ? `Nickname saved: "${newNick}"` : 'Nickname reset to email');
+        }}
       />
 
       {/* Toast Notification */}

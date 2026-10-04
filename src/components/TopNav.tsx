@@ -27,7 +27,9 @@ interface TopNavProps {
   onOpenRenameModal?: () => void;
   onOpenCloudModal?: () => void;
   onOpenActivityLogs?: () => void;
+  onOpenProfile?: () => void;
   userEmail?: string | null;
+  userNickname?: string | null;
   onSignOut?: () => void;
   isLibraryOpen: boolean;
   onToggleLibrary: () => void;
@@ -47,7 +49,9 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenRenameModal,
   onOpenCloudModal,
   onOpenActivityLogs,
+  onOpenProfile,
   userEmail,
+  userNickname,
   onSignOut,
   isLibraryOpen,
   onToggleLibrary,
@@ -190,20 +194,33 @@ export const TopNav: React.FC<TopNavProps> = ({
           <Camera className="w-4 h-4" />
         </button>
 
-        {/* User Profile & Sign Out */}
+        {/* User Profile in Corner */}
         {userEmail && (
-          <div className="flex items-center gap-1 pl-1 border-l border-neutral-800">
-            <div
-              className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-900/60 border border-neutral-800/60 text-[11px] text-neutral-300"
-              title={`Signed in as ${userEmail}`}
+          <div className="flex items-center gap-1.5 pl-1.5 border-l border-neutral-800">
+            <button
+              id="btn-open-profile"
+              onClick={onOpenProfile}
+              type="button"
+              className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 hover:border-sky-500/50 transition-all cursor-pointer group shadow-sm"
+              title="Open User Profile & Set Nickname"
             >
-              <UserIcon className="w-3.5 h-3.5 text-sky-400" />
-              <span className="truncate max-w-[130px]">{userEmail}</span>
-            </div>
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white text-[11px] font-bold shadow-sm ring-1 ring-white/20 shrink-0">
+                {(userNickname || userEmail).charAt(0).toUpperCase()}
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-semibold text-neutral-200 group-hover:text-white transition-colors truncate max-w-[100px] sm:max-w-[125px]">
+                  {userNickname || userEmail.split('@')[0]}
+                </span>
+                <span className="text-[9px] text-neutral-400 group-hover:text-sky-400 transition-colors">
+                  {userNickname ? 'Profile' : 'Set Nickname'}
+                </span>
+              </div>
+            </button>
+
             <button
               id="btn-signout"
               onClick={onSignOut}
-              className="p-2 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition-colors cursor-pointer"
               title="Sign Out of 3D Portal"
             >
               <LogOut className="w-4 h-4" />

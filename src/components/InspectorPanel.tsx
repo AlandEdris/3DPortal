@@ -27,6 +27,7 @@ import {
   ModelItem,
 } from '../types/model';
 import { SceneNode, MaterialDetail } from '../utils/modelAnalyzer';
+import { getModelCreatorDisplayName } from '../utils/firebase';
 
 interface InspectorPanelProps {
   isOpen: boolean;
@@ -73,6 +74,8 @@ interface InspectorPanelProps {
   onRenameModel?: (id: string, newName: string) => void;
   onDeleteModel?: (id: string) => void;
   onRequestDelete?: (model: ModelItem) => void;
+  userProfiles?: Record<string, string>;
+  currentUser?: { uid?: string; email?: string | null; displayName?: string | null } | null;
 }
 
 export const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -116,6 +119,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onRenameModel,
   onDeleteModel,
   onRequestDelete,
+  userProfiles,
+  currentUser,
 }) => {
   const [activeTab, setActiveTab] = useState<'inspect' | 'studio' | 'materials' | 'animations'>('inspect');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['root']));
@@ -397,7 +402,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-500">Added By:</span>
                   <span className="text-neutral-300 font-medium">
-                    {currentModel?.createdBy || 'Default System Fleet'}
+                    {getModelCreatorDisplayName(currentModel, userProfiles, currentUser)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

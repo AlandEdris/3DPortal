@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ModelItem } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
+import { getModelCreatorDisplayName } from '../utils/firebase';
 
 interface ModelLibraryProps {
   models: ModelItem[];
@@ -34,6 +35,8 @@ interface ModelLibraryProps {
   isOpen: boolean;
   onClose: () => void;
   onLoadDefaults: () => void;
+  userProfiles?: Record<string, string>;
+  currentUser?: { uid?: string; email?: string | null; displayName?: string | null } | null;
   dbStatus?: { online: boolean; message: string };
 }
 
@@ -50,6 +53,8 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   isOpen,
   onClose,
   onLoadDefaults,
+  userProfiles,
+  currentUser,
   dbStatus = { online: true, message: 'Database Connected' },
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -337,12 +342,12 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                         {/* Author & Timestamp */}
                         <div className="flex items-center gap-2 text-[10px] text-neutral-400 mt-1.5 pt-1.5 border-t border-neutral-800/60">
                           <div
-                            className="flex items-center gap-1 truncate max-w-[110px]"
-                            title={`Added by: ${model.createdBy || 'Default System'}`}
+                            className="flex items-center gap-1 truncate max-w-[130px]"
+                            title={`Added by: ${getModelCreatorDisplayName(model, userProfiles, currentUser)}`}
                           >
                             <User className="w-3 h-3 text-sky-400 shrink-0" />
                             <span className="truncate text-neutral-300 font-medium">
-                              {model.createdBy ? model.createdBy.split('@')[0] : 'System'}
+                              {getModelCreatorDisplayName(model, userProfiles, currentUser)}
                             </span>
                           </div>
                           <span className="text-neutral-600">·</span>
