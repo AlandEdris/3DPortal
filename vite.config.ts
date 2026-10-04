@@ -130,6 +130,7 @@ function apiDatabasePlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
+    base: process.env.GITHUB_PAGES === 'true' ? '/3DPortal/' : '/',
     plugins: [react(), tailwindcss(), apiDatabasePlugin()],
     resolve: {
       alias: {

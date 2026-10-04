@@ -1,5 +1,8 @@
 import { ModelItem } from '../types/model';
 
+const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
+const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+
 /**
  * Built-in real GLB models extracted from the provided aircraft archives.
  * Replaces synthetic/procedural placeholder models with real aerospace 3D assets.
@@ -9,7 +12,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'mig-23_ub',
     name: 'MiG-23 UB Fighter Jet',
     size: 15143016,
-    fileUrl: '/models/mig-23_ub.glb',
+    fileUrl: `${cleanBase}models/mig-23_ub.glb`,
     createdAt: 1720000000000,
     isDefault: true,
     isSample: false,
@@ -29,7 +32,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'f35_fighter_jet',
     name: 'F-35 Lightning II Stealth Jet',
     size: 94280032,
-    fileUrl: '/models/f35_fighter_jet.glb',
+    fileUrl: `${cleanBase}models/f35_fighter_jet.glb`,
     createdAt: 1720000001000,
     isDefault: true,
     isSample: false,
@@ -49,7 +52,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'sr72_darkstar',
     name: 'SR-72 Darkstar Hypersonic Jet',
     size: 1038488,
-    fileUrl: '/models/lockheed_martin_sr72_darkstar__topgun_maverick.glb',
+    fileUrl: `${cleanBase}models/lockheed_martin_sr72_darkstar__topgun_maverick.glb`,
     createdAt: 1720000002000,
     isDefault: true,
     isSample: false,
@@ -69,7 +72,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'boeing_787',
     name: 'Boeing 787 Dreamliner',
     size: 1031072,
-    fileUrl: '/models/boeing_787_dreamliner.glb',
+    fileUrl: `${cleanBase}models/boeing_787_dreamliner.glb`,
     createdAt: 1720000003000,
     isDefault: true,
     isSample: false,
@@ -89,7 +92,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'c130_hercules',
     name: 'Lockheed C-130 Hercules',
     size: 5223400,
-    fileUrl: '/models/lockheed_c-130_hercules.glb',
+    fileUrl: `${cleanBase}models/lockheed_c-130_hercules.glb`,
     createdAt: 1720000004000,
     isDefault: true,
     isSample: false,
@@ -109,7 +112,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'f104_starfighter',
     name: 'F-104 Starfighter Interceptor',
     size: 13325268,
-    fileUrl: '/models/f-104_starfighter.glb',
+    fileUrl: `${cleanBase}models/f-104_starfighter.glb`,
     createdAt: 1720000005000,
     isDefault: true,
     isSample: false,
@@ -129,7 +132,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'av8b_harrier',
     name: 'AV-8B Harrier II V/STOL Jet',
     size: 2676244,
-    fileUrl: '/models/av-8b_harrier_ii_usa.glb',
+    fileUrl: `${cleanBase}models/av-8b_harrier_ii_usa.glb`,
     createdAt: 1720000006000,
     isDefault: true,
     isSample: false,
@@ -149,7 +152,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'f4ej_phantom',
     name: 'F-4EJ Phantom II Jet',
     size: 1778300,
-    fileUrl: '/models/f-4ej_japan.glb',
+    fileUrl: `${cleanBase}models/f-4ej_japan.glb`,
     createdAt: 1720000007000,
     isDefault: true,
     isSample: false,
@@ -169,7 +172,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'f86f_sabre',
     name: 'F-86F Sabre Jet',
     size: 1952716,
-    fileUrl: '/models/f-86f_kyoko_japan.glb',
+    fileUrl: `${cleanBase}models/f-86f_kyoko_japan.glb`,
     createdAt: 1720000008000,
     isDefault: true,
     isSample: false,
@@ -189,7 +192,7 @@ export const DEFAULT_AIRCRAFT_MODELS: ModelItem[] = [
     id: 'stylized_ww1_plane',
     name: 'Stylized WW1 Biplane',
     size: 1474576,
-    fileUrl: '/models/stylized_ww1_plane.glb',
+    fileUrl: `${cleanBase}models/stylized_ww1_plane.glb`,
     createdAt: 1720000009000,
     isDefault: true,
     isSample: false,
