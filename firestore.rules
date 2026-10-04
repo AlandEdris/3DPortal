@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. User Profiles & Nicknames (voxelorbit_users)
+    // Allows anyone to read nicknames on planes, and logged-in users to update their own profile
+    match /voxelorbit_users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 2. 3D Model Catalog (voxelorbit_models)
+    // Allows everyone to view planes, authenticated users to upload, edit, and delete
+    match /voxelorbit_models/{modelId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // 3. Activity Logs & Duplicate Tracking (voxelorbit_activity_logs)
+    // Allows viewing activity history, authenticated users to record logs
+    match /voxelorbit_activity_logs/{logId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+  }
+}
