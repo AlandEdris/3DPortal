@@ -151,11 +151,6 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const formatTriangles = (count: number) => {
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
-    return `${count}`;
-  };
 
   const handleDownload = (e: React.MouseEvent, model: ModelItem) => {
     e.stopPropagation();
@@ -419,8 +414,6 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
 
                         <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 mt-1 font-mono">
                           <span>{formatFileSize(model.size)}</span>
-                          <span aria-hidden="true" className="text-neutral-600">·</span>
-                          <span>{formatTriangles(model.metrics?.triangles || 0)} tris</span>
                         </div>
 
                         {/* Author, Timestamp & Marker Checkbox on the exact SAME ROW */}
