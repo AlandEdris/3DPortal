@@ -458,6 +458,7 @@ export function subscribeToCloudModels(
           cloudModels.push({
             id: data.id || docSnap.id,
             name: data.name,
+            fileName: data.fileName || data.name,
             size: Number(data.size) || 0,
             fileUrl: data.fileUrl || '',
             thumbnailUrl: data.thumbnailUrl || undefined,
@@ -521,6 +522,7 @@ export async function saveModelToCloud(
     const cleanRecord: Record<string, any> = {
       id: model.id,
       name: model.name,
+      fileName: model.fileName || model.name,
       size: model.size,
       fileUrl: cloudFileUrl.startsWith('blob:') ? '' : cloudFileUrl,
       createdAt: model.createdAt || Date.now(),
@@ -701,7 +703,7 @@ export async function getAllModelsFromCloud(): Promise<ModelItem[]> {
  * Log an audit action to Firestore.
  */
 export async function logActivity(
-  action: 'added' | 'modified' | 'deleted' | 'renamed',
+  action: 'added' | 'modified' | 'deleted' | 'renamed' | 'duplicate_skipped',
   modelId: string,
   modelName: string,
   userEmail: string,

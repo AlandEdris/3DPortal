@@ -11,6 +11,8 @@ import {
   User,
   Clock,
   Filter,
+  AlertTriangle,
+  Copy,
 } from 'lucide-react';
 import { ActivityLog } from '../types/model';
 import { subscribeToActivityLogs } from '../utils/firebase';
@@ -87,6 +89,13 @@ export const ActivityLogsModal: React.FC<ActivityLogsModalProps> = ({
             Deleted
           </span>
         );
+      case 'duplicate_skipped':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <AlertTriangle className="w-3 h-3" />
+            Duplicate Skipped
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-800 text-neutral-300">
@@ -150,19 +159,26 @@ export const ActivityLogsModal: React.FC<ActivityLogsModalProps> = ({
         {/* Filter & Search Bar */}
         <div className="p-4 border-b border-neutral-800 bg-neutral-900 flex flex-wrap items-center justify-between gap-3">
           {/* Action Tabs */}
-          <div className="flex items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800 text-xs">
-            {['all', 'added', 'modified', 'renamed', 'deleted'].map((tab) => (
+          <div className="flex items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800 text-xs overflow-x-auto">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'added', label: 'Added' },
+              { id: 'modified', label: 'Modified' },
+              { id: 'renamed', label: 'Renamed' },
+              { id: 'deleted', label: 'Deleted' },
+              { id: 'duplicate_skipped', label: 'Duplicates' },
+            ].map((tab) => (
               <button
-                key={tab}
-                id={`btn-filter-${tab}`}
-                onClick={() => setFilterAction(tab)}
-                className={`px-3 py-1.5 rounded-lg capitalize font-medium transition-all cursor-pointer ${
-                  filterAction === tab
+                key={tab.id}
+                id={`btn-filter-${tab.id}`}
+                onClick={() => setFilterAction(tab.id)}
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition-all cursor-pointer ${
+                  filterAction === tab.id
                     ? 'bg-sky-600 text-white shadow-sm'
                     : 'text-neutral-400 hover:text-neutral-200'
                 }`}
               >
-                {tab}
+                {tab.label}
               </button>
             ))}
           </div>

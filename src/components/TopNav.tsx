@@ -15,7 +15,7 @@ import {
   LogOut,
   User as UserIcon,
 } from 'lucide-react';
-import { ModelItem } from '../types/model';
+import { ModelItem, formatModelDisplayName } from '../types/model';
 
 interface TopNavProps {
   currentModel: ModelItem | null;
@@ -93,7 +93,7 @@ export const TopNav: React.FC<TopNavProps> = ({
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-medium text-neutral-200 transition-colors max-w-[160px] sm:max-w-[220px] truncate"
             >
-              <span className="truncate">{currentModel?.name || 'No Model Loaded'}</span>
+              <span className="truncate">{formatModelDisplayName(currentModel?.name || 'No Model Loaded')}</span>
               <ChevronDown className="w-3.5 h-3.5 shrink-0 text-neutral-400" />
             </button>
 
@@ -118,7 +118,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                         currentModel?.id === m.id ? 'bg-neutral-800/80 text-sky-400 font-medium' : 'text-neutral-300'
                       }`}
                     >
-                      <span className="truncate pr-2">{m.name}</span>
+                      <span className="truncate pr-2">{formatModelDisplayName(m.name)}</span>
                       <span className="text-[10px] text-neutral-400 shrink-0 font-mono">
                         {(m.size / (1024 * 1024)).toFixed(1)} MB
                       </span>

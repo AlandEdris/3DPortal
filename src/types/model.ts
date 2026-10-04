@@ -16,6 +16,7 @@ export interface ModelMetrics {
 export interface ModelItem {
   id: string;
   name: string;
+  fileName?: string; // Original unique file name (e.g. "space_shuttle.glb")
   size: number; // in bytes
   fileUrl: string;
   fileBlob?: Blob;
@@ -33,13 +34,21 @@ export interface ModelItem {
 
 export interface ActivityLog {
   id: string;
-  action: 'added' | 'modified' | 'deleted' | 'renamed';
+  action: 'added' | 'modified' | 'deleted' | 'renamed' | 'duplicate_skipped';
   modelId: string;
   modelName: string;
   userEmail: string;
   userId?: string;
   timestamp: number;
   details?: string;
+}
+
+/**
+ * Format model display name by stripping file extension (.glb / .gltf)
+ */
+export function formatModelDisplayName(name: string): string {
+  if (!name) return 'Untitled Model';
+  return name.replace(/\.(glb|gltf)$/i, '');
 }
 
 export type LightingPreset = 'studio' | 'cyber' | 'sunset' | 'darkroom' | 'daylight';

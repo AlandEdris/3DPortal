@@ -28,6 +28,7 @@ import {
   subscribeToAuth,
   signOutUser,
   subscribeToUserProfiles,
+  logActivity,
 } from './utils/firebase';
 import type { User } from 'firebase/auth';
 import {
@@ -36,6 +37,7 @@ import {
   BackgroundMode,
   CameraViewPreset,
   ModelItem,
+  formatModelDisplayName,
 } from './types/model';
 import { SceneNode, MaterialDetail } from './utils/modelAnalyzer';
 import { DEFAULT_AIRCRAFT_MODELS } from './utils/defaultModels';
@@ -378,11 +380,30 @@ export default function App() {
       for (const file of glbOrGltfFiles) {
         const duplicateCheck = checkIsDuplicate([...models, ...newItems], {
           name: file.name,
+          fileName: file.name,
           size: file.size,
         });
 
         if (duplicateCheck.isDuplicate) {
           skippedDuplicates.push(file.name);
+          const creatorDisplayName =
+            activeUserNickname?.trim() ||
+            currentUser?.email ||
+            'Authorized User';
+          const reasonMsg = duplicateCheck.duplicateOf
+            ? `File "${file.name}" was not imported because of duplication with existing model "${duplicateCheck.duplicateOf.fileName || duplicateCheck.duplicateOf.name}".`
+            : `File "${file.name}" was not imported because of duplication.`;
+
+          if (isCloudConfigured()) {
+            logActivity(
+              'duplicate_skipped',
+              duplicateCheck.duplicateOf?.id || 'duplicate',
+              file.name,
+              creatorDisplayName,
+              currentUser?.uid,
+              reasonMsg
+            ).catch(console.warn);
+          }
           continue;
         }
 
@@ -395,7 +416,8 @@ export default function App() {
 
         const newItem: ModelItem = {
           id,
-          name: file.name,
+          name: formatModelDisplayName(file.name),
+          fileName: file.name,
           size: file.size,
           fileUrl: url,
           fileBlob: file,
@@ -441,7 +463,7 @@ export default function App() {
       // User feedback on imported items and duplicates
       if (newItems.length > 0 && skippedDuplicates.length > 0) {
         showToast(
-          `Imported ${newItems.length} model(s) & saved to DB. Skipped ${skippedDuplicates.length} duplicate(s) already in library.`
+          `Imported ${newItems.length} model(s). Notice: ${skippedDuplicates.length} file(s) not imported because of duplication: ${skippedDuplicates.join(', ')}`
         );
       } else if (newItems.length > 0) {
         showToast(
@@ -449,11 +471,11 @@ export default function App() {
         );
       } else if (skippedDuplicates.length > 0) {
         showToast(
-          `Duplicate skipped: "${skippedDuplicates.join(', ')}" is already in your database.`
+          `This file is not imported because of duplication: ${skippedDuplicates.join(', ')}`
         );
       }
     },
-    [models, showToast]
+    [models, showToast, activeUserNickname, currentUser]
   );
 
   // 4. Handle Direct URL Import with Duplicate Prevention
@@ -467,9 +489,24 @@ export default function App() {
           : `${resolvedName}.glb`;
 
         // Check if candidate name is duplicate
-        const duplicateCheck = checkIsDuplicate(models, { name: cleanName, size: 0 });
+        const duplicateCheck = checkIsDuplicate(models, {
+          name: cleanName,
+          fileName: cleanName,
+          size: 0,
+        });
         if (duplicateCheck.isDuplicate) {
-          showToast(`Duplicate skipped: "${cleanName}" is already in your library.`);
+          const reasonMsg = `This file is not imported because of duplication: "${cleanName}"`;
+          showToast(reasonMsg);
+          if (isCloudConfigured()) {
+            logActivity(
+              'duplicate_skipped',
+              duplicateCheck.duplicateOf?.id || 'duplicate',
+              cleanName,
+              activeUserNickname?.trim() || currentUser?.email || 'Authorized User',
+              currentUser?.uid,
+              `File "${cleanName}" was not imported because of duplication.`
+            ).catch(console.warn);
+          }
           return false;
         }
 
@@ -478,11 +515,24 @@ export default function App() {
         const blob = await res.blob();
 
         // Check with actual size
-        const sizeCheck = checkIsDuplicate(models, { name: cleanName, size: blob.size });
+        const sizeCheck = checkIsDuplicate(models, {
+          name: cleanName,
+          fileName: cleanName,
+          size: blob.size,
+        });
         if (sizeCheck.isDuplicate) {
-          showToast(
-            `Duplicate skipped: "${cleanName}" (${(blob.size / (1024 * 1024)).toFixed(1)} MB) already exists in database.`
-          );
+          const reasonMsg = `This file is not imported because of duplication: "${cleanName}" (${(blob.size / (1024 * 1024)).toFixed(1)} MB)`;
+          showToast(reasonMsg);
+          if (isCloudConfigured()) {
+            logActivity(
+              'duplicate_skipped',
+              sizeCheck.duplicateOf?.id || 'duplicate',
+              cleanName,
+              activeUserNickname?.trim() || currentUser?.email || 'Authorized User',
+              currentUser?.uid,
+              `File "${cleanName}" was not imported because of duplication.`
+            ).catch(console.warn);
+          }
           return false;
         }
 
@@ -495,7 +545,8 @@ export default function App() {
 
         const newItem: ModelItem = {
           id,
-          name: cleanName,
+          name: formatModelDisplayName(cleanName),
+          fileName: cleanName,
           size: blob.size,
           fileUrl,
           fileBlob: blob,

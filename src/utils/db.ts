@@ -47,25 +47,38 @@ export async function requestPersistentStorage(): Promise<boolean> {
 /**
  * Duplicate Detector:
  * Checks whether an incoming model already exists in the library.
- * Matches by normalized name (ignoring casing and extensions) or exact size + name.
+/**
+ * Robust duplicate check for 3D models:
+ * Matches by unique original fileName, normalized name, or exact size + name.
  */
 export function checkIsDuplicate(
   existingModels: ModelItem[],
-  candidate: { name: string; size: number }
+  candidate: { name: string; fileName?: string; size: number }
 ): { isDuplicate: boolean; duplicateOf?: ModelItem; reason?: string } {
   const normalize = (name: string) =>
-    name
+    (name || '')
       .toLowerCase()
       .replace(/\.(glb|gltf)$/i, '')
       .replace(/[_\s-]+/g, ' ')
       .trim();
 
-  const candidateNorm = normalize(candidate.name);
+  const candidateFile = (candidate.fileName || candidate.name || '').toLowerCase().trim();
+  const candidateNorm = normalize(candidate.name || candidate.fileName || '');
 
   for (const existing of existingModels) {
-    const existingNorm = normalize(existing.name);
+    const existingFile = (existing.fileName || existing.name || '').toLowerCase().trim();
+    const existingNorm = normalize(existing.name || existing.fileName || '');
 
-    // Exact normalized name match
+    // 1. Exact unique file name collision (e.g. space_shuttle.glb == space_shuttle.glb)
+    if (candidateFile && existingFile && candidateFile === existingFile) {
+      return {
+        isDuplicate: true,
+        duplicateOf: existing,
+        reason: `File "${candidate.fileName || candidate.name}" is already in your library as "${existing.name}"`,
+      };
+    }
+
+    // 2. Exact normalized name match
     if (existingNorm === candidateNorm) {
       return {
         isDuplicate: true,
@@ -74,10 +87,12 @@ export function checkIsDuplicate(
       };
     }
 
-    // Exact size and close name match
-    if (candidate.size > 0 && existing.size === candidate.size && (
-      existingNorm.includes(candidateNorm) || candidateNorm.includes(existingNorm)
-    )) {
+    // 3. Exact size and close name match
+    if (
+      candidate.size > 0 &&
+      existing.size === candidate.size &&
+      (existingNorm.includes(candidateNorm) || candidateNorm.includes(existingNorm))
+    ) {
       return {
         isDuplicate: true,
         duplicateOf: existing,

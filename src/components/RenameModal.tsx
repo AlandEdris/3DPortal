@@ -122,7 +122,7 @@ export const RenameModal: React.FC<RenameModalProps> = ({
           <div className="text-[11px] text-neutral-400 bg-neutral-950/60 p-3 rounded-xl border border-neutral-800/80 space-y-1">
             <div className="flex justify-between">
               <span className="text-neutral-500">Original File:</span>
-              <span className="font-mono text-neutral-300 truncate max-w-[220px]">{model.name}</span>
+              <span className="font-mono text-neutral-300 truncate max-w-[220px]">{model.fileName || model.name}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-neutral-500">File Size:</span>

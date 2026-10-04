@@ -18,7 +18,7 @@ import {
   User,
   Clock,
 } from 'lucide-react';
-import { ModelItem } from '../types/model';
+import { ModelItem, formatModelDisplayName } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
 import { getModelCreatorDisplayName } from '../utils/firebase';
 
@@ -95,23 +95,23 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const startEditing = (e: React.MouseEvent, model: ModelItem) => {
     e.stopPropagation();
     setEditingModelId(model.id);
-    setEditNameValue(model.name.replace(/\.(glb|gltf)$/i, ''));
+    setEditNameValue(formatModelDisplayName(model.name));
     setEditError(null);
   };
 
   const saveRename = (e: React.MouseEvent | React.FormEvent, id: string) => {
     e.stopPropagation();
     e.preventDefault();
-    const trimmed = editNameValue.trim();
+    const clean = formatModelDisplayName(editNameValue.trim());
 
-    if (!trimmed) {
+    if (!clean) {
       setEditError('Name cannot be empty');
       return;
     }
 
-    const norm = trimmed.toLowerCase();
+    const norm = clean.toLowerCase();
     const duplicate = models.some(
-      (m) => m.id !== id && m.name.toLowerCase().replace(/\.(glb|gltf)$/i, '') === norm
+      (m) => m.id !== id && formatModelDisplayName(m.name).toLowerCase() === norm
     );
 
     if (duplicate) {
@@ -119,7 +119,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
       return;
     }
 
-    onRenameModel(id, trimmed);
+    onRenameModel(id, clean);
     setEditingModelId(null);
     setEditError(null);
   };
@@ -147,7 +147,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     if (!model.fileUrl) return;
     const a = document.createElement('a');
     a.href = model.fileUrl;
-    const filename = model.name.toLowerCase().endsWith('.glb') ? model.name : `${model.name}.glb`;
+    const filename = model.fileName || (model.name.toLowerCase().endsWith('.glb') ? model.name : `${model.name}.glb`);
     a.download = filename;
     document.body.appendChild(a);
     a.click();
@@ -328,9 +328,9 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                           className={`text-xs font-semibold truncate ${
                             isSelected ? 'text-sky-300' : 'text-neutral-200'
                           }`}
-                          title={model.name}
+                          title={model.fileName ? `${formatModelDisplayName(model.name)} (File: ${model.fileName})` : formatModelDisplayName(model.name)}
                         >
-                          {model.name}
+                          {formatModelDisplayName(model.name)}
                         </p>
 
                         <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 mt-1 font-mono">

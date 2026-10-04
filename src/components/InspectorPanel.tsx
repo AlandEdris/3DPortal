@@ -25,6 +25,7 @@ import {
   LightingPreset,
   BackgroundMode,
   ModelItem,
+  formatModelDisplayName,
 } from '../types/model';
 import { SceneNode, MaterialDetail } from '../utils/modelAnalyzer';
 import { getModelCreatorDisplayName } from '../utils/firebase';
@@ -384,7 +385,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               ) : (
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-neutral-100 truncate pr-2" title={currentModel?.name}>
-                    {currentModel?.name}
+                    {formatModelDisplayName(currentModel?.name || '')}
                   </span>
                   <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 shrink-0">
                     {((currentModel?.size || 0) / (1024 * 1024)).toFixed(2)} MB
@@ -399,6 +400,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
               {/* Added By & Timestamp details */}
               <div className="pt-2 border-t border-neutral-800/80 text-[11px] space-y-1">
+                {(currentModel?.fileName || currentModel?.name) && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-500">File Name:</span>
+                    <span className="text-neutral-300 font-mono text-[10px] truncate max-w-[170px]" title={currentModel?.fileName || currentModel?.name}>
+                      {currentModel?.fileName || currentModel?.name}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-500">Added By:</span>
                   <span className="text-neutral-300 font-medium">
