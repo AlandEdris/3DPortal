@@ -14,6 +14,7 @@ import {
   History,
   LogOut,
   User as UserIcon,
+  ShieldAlert,
 } from 'lucide-react';
 import { ModelItem, formatModelDisplayName } from '../types/model';
 
@@ -27,6 +28,7 @@ interface TopNavProps {
   onOpenRenameModal?: () => void;
   onOpenCloudModal?: () => void;
   onOpenActivityLogs?: () => void;
+  onOpenPlaneManagement?: () => void;
   onOpenProfile?: () => void;
   userEmail?: string | null;
   userNickname?: string | null;
@@ -49,6 +51,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenRenameModal,
   onOpenCloudModal,
   onOpenActivityLogs,
+  onOpenPlaneManagement,
   onOpenProfile,
   userEmail,
   userNickname,
@@ -185,6 +188,19 @@ export const TopNav: React.FC<TopNavProps> = ({
           <History className="w-3.5 h-3.5 text-sky-400" />
           <span className="hidden lg:inline">Activity Logs</span>
         </button>
+
+        {/* Plane & Firestore Management Button */}
+        {onOpenPlaneManagement && (
+          <button
+            id="btn-nav-plane-management"
+            onClick={onOpenPlaneManagement}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded-lg transition-colors whitespace-nowrap cursor-pointer shadow-sm shadow-rose-950/30"
+            title="Open Plane & Cloud Firestore Management (Permanent Deletion & Cleaning)"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+            <span className="hidden sm:inline">Manage Plains</span>
+          </button>
+        )}
 
         <button
           onClick={onTakeSnapshot}

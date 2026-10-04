@@ -140,6 +140,19 @@ export function recordDeletedModelId(id: string): void {
   }
 }
 
+export function recordMultipleDeletedModelIds(ids: string[]): void {
+  try {
+    const raw = localStorage.getItem('voxelorbit_deleted_models');
+    const set = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+    for (const id of ids) {
+      set.add(id);
+    }
+    localStorage.setItem('voxelorbit_deleted_models', JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('Failed to record deleted model ids:', e);
+  }
+}
+
 export function getDeletedModelIds(): Set<string> {
   try {
     const raw = localStorage.getItem('voxelorbit_deleted_models');
@@ -347,6 +360,27 @@ export async function deleteModelFromDB(id: string): Promise<void> {
     }).catch(() => {});
   } catch {
     // Non-blocking
+  }
+}
+
+/**
+ * Delete multiple models from IndexedDB.
+ */
+export async function deleteMultipleModelsFromDB(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      for (const id of ids) {
+        store.delete(id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('Failed to delete multiple models from IndexedDB:', err);
   }
 }
 

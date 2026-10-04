@@ -18,6 +18,7 @@ import { CloudConfigModal } from './components/CloudConfigModal';
 import { LoginPage } from './components/LoginPage';
 import { ActivityLogsModal } from './components/ActivityLogsModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { PlaneManagementModal } from './components/PlaneManagementModal';
 import {
   isCloudConfigured,
   subscribeToCloudModels,
@@ -125,6 +126,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isActivityLogsOpen, setIsActivityLogsOpen] = useState(false);
+  const [isPlaneManagementOpen, setIsPlaneManagementOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
   const [globalDragActive, setGlobalDragActive] = useState(false);
@@ -1028,6 +1030,7 @@ export default function App() {
         onToggleFullscreen={handleToggleFullscreen}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
         onOpenActivityLogs={() => setIsActivityLogsOpen(true)}
+        onOpenPlaneManagement={() => setIsPlaneManagementOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         userEmail={currentUser?.email}
         userNickname={activeUserNickname}
@@ -1061,6 +1064,7 @@ export default function App() {
           onOpen={() => setIsLibraryOpen(true)}
           onLoadDefaults={handleLoadDefaults}
           onOpenCloudModal={() => setIsCloudModalOpen(true)}
+          onOpenPlaneManagement={() => setIsPlaneManagementOpen(true)}
           userProfiles={userProfiles}
           currentUser={currentUser}
           dbStatus={dbStatus}
@@ -1250,6 +1254,31 @@ export default function App() {
       <ActivityLogsModal
         isOpen={isActivityLogsOpen}
         onClose={() => setIsActivityLogsOpen(false)}
+      />
+
+      {/* Plane & Cloud Firestore Database Management Modal */}
+      <PlaneManagementModal
+        isOpen={isPlaneManagementOpen}
+        onClose={() => setIsPlaneManagementOpen(false)}
+        models={models}
+        currentModel={currentModel}
+        onModelsChanged={(nextModels, nextActive) => {
+          setModels(nextModels);
+          setCurrentModel(nextActive);
+          if (nextModels.length === 0) {
+            setMaterialOverrides({});
+            setHiddenNodeIds(new Set());
+            setFocusedNodeId(null);
+            setActiveAnimationIndex(0);
+          }
+        }}
+        onRestoreFleet={handleLoadDefaults}
+        userProfiles={userProfiles}
+        currentUserEmail={currentUser?.email}
+        currentUserId={currentUser?.uid}
+        currentUserNickname={activeUserNickname}
+        onShowToast={showToast}
+        dbStatus={dbStatus}
       />
 
       {/* User Profile & Nickname Modal */}

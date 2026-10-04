@@ -15,6 +15,7 @@ import {
   query,
   orderBy,
   limit,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   getAuth,
@@ -623,6 +624,128 @@ export async function deleteModelFromCloud(
   } catch (err) {
     console.warn('Failed to delete model from Firestore:', err);
     return false;
+  }
+}
+
+/**
+ * Permanently delete multiple models from Firebase Firestore.
+ */
+export async function deleteMultipleModelsFromCloud(
+  ids: string[],
+  userDisplayName?: string,
+  userId?: string
+): Promise<{ success: boolean; deletedCount: number; error?: string }> {
+  const db = getFirestoreDB();
+  if (!db) {
+    return { success: false, deletedCount: 0, error: 'Firestore database is not connected.' };
+  }
+
+  if (ids.length === 0) return { success: true, deletedCount: 0 };
+
+  try {
+    const batchSize = 450;
+    let totalDeleted = 0;
+
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const chunk = ids.slice(i, i + batchSize);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.delete(doc(db, COLLECTION_MODELS, id));
+      }
+      await batch.commit();
+      totalDeleted += chunk.length;
+    }
+
+    // Try deleting objects from storage if applicable
+    const storage = getFirebaseStorage();
+    if (storage) {
+      for (const id of ids) {
+        try {
+          const fileRef = storageRef(storage, `models/${id}`);
+          deleteObject(fileRef).catch(() => {});
+        } catch {}
+      }
+    }
+
+    // Record audit log
+    await logActivity(
+      'deleted',
+      'firestore_batch_delete',
+      `${totalDeleted} Planes Deleted`,
+      userDisplayName || 'Authorized User',
+      userId,
+      `Permanently deleted ${totalDeleted} selected plane(s) from Firebase Firestore`
+    );
+
+    return { success: true, deletedCount: totalDeleted };
+  } catch (err: any) {
+    console.error('Failed to delete multiple models from Firestore:', err);
+    return { success: false, deletedCount: 0, error: err.message || 'Batch delete failed' };
+  }
+}
+
+/**
+ * Permanently purge and clean ALL models from Firebase Firestore.
+ */
+export async function deleteAllModelsFromCloud(
+  userDisplayName?: string,
+  userId?: string
+): Promise<{ success: boolean; deletedCount: number; error?: string }> {
+  const db = getFirestoreDB();
+  if (!db) {
+    return { success: false, deletedCount: 0, error: 'Firestore database is not connected.' };
+  }
+
+  try {
+    const colRef = collection(db, COLLECTION_MODELS);
+    const snapshot = await getDocs(colRef);
+    if (snapshot.empty) {
+      return { success: true, deletedCount: 0 };
+    }
+
+    const docs = snapshot.docs;
+    const batchSize = 450;
+    let totalDeleted = 0;
+
+    for (let i = 0; i < docs.length; i += batchSize) {
+      const chunk = docs.slice(i, i + batchSize);
+      const batch = writeBatch(db);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+      totalDeleted += chunk.length;
+    }
+
+    // Try deleting objects from storage if applicable
+    const storage = getFirebaseStorage();
+    if (storage) {
+      for (const d of docs) {
+        try {
+          const data = d.data();
+          const cleanFileName = (data.fileName || data.name || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+          if (cleanFileName) {
+            const fileRef = storageRef(storage, `models/${d.id}/${cleanFileName}`);
+            deleteObject(fileRef).catch(() => {});
+          }
+        } catch {}
+      }
+    }
+
+    // Record audit log
+    await logActivity(
+      'deleted',
+      'firestore_purge_all',
+      'All Planes Purged',
+      userDisplayName || 'Authorized Admin',
+      userId,
+      `Permanently cleaned and deleted all ${totalDeleted} plane(s) from Firebase Firestore`
+    );
+
+    return { success: true, deletedCount: totalDeleted };
+  } catch (err: any) {
+    console.error('Failed to purge all models from Firestore:', err);
+    return { success: false, deletedCount: 0, error: err.message || 'Purge failed' };
   }
 }
 

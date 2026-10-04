@@ -21,6 +21,7 @@ import {
   BadgeCheck,
   ChevronLeft,
   ChevronRight,
+  ShieldAlert,
 } from 'lucide-react';
 import { ModelItem, formatModelDisplayName } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
@@ -36,6 +37,7 @@ interface ModelLibraryProps {
   onUploadFiles: (files: FileList | File[]) => void;
   onOpenUrlModal: () => void;
   onOpenCloudModal?: () => void;
+  onOpenPlaneManagement?: () => void;
   isOpen: boolean;
   onClose: () => void;
   onOpen?: () => void;
@@ -56,6 +58,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   onUploadFiles,
   onOpenUrlModal,
   onOpenCloudModal,
+  onOpenPlaneManagement,
   isOpen,
   onClose,
   onOpen,
@@ -339,6 +342,16 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {onOpenPlaneManagement && (
+            <button
+              id="btn-open-plane-management-lib"
+              onClick={onOpenPlaneManagement}
+              className="p-1 rounded-md text-rose-400 hover:text-rose-300 hover:bg-neutral-900 transition-colors cursor-pointer"
+              title="Manage Plains & Firestore Database (Permanent Deletions)"
+            >
+              <ShieldAlert className="w-4 h-4" />
+            </button>
+          )}
           <button
             id="btn-export-library"
             onClick={() => exportModelsMetadataJSON(models)}
