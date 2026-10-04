@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Edit3,
   Database,
+  Cloud,
 } from 'lucide-react';
 import { ModelItem } from '../types/model';
 
@@ -21,6 +22,7 @@ interface TopNavProps {
   onOpenUrlModal: () => void;
   onTakeSnapshot: () => void;
   onOpenRenameModal?: () => void;
+  onOpenCloudModal?: () => void;
   isLibraryOpen: boolean;
   onToggleLibrary: () => void;
   isInspectorOpen: boolean;
@@ -37,6 +39,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenUrlModal,
   onTakeSnapshot,
   onOpenRenameModal,
+  onOpenCloudModal,
   isLibraryOpen,
   onToggleLibrary,
   isInspectorOpen,
@@ -127,15 +130,19 @@ export const TopNav: React.FC<TopNavProps> = ({
 
       {/* Zone 2: Primary Actions & Database Status */}
       <div className="flex items-center gap-1.5 sm:gap-2">
-        {/* Database Status Pill */}
-        <div
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 border border-neutral-800/80 text-[11px] text-neutral-300 font-medium mr-1"
-          title={dbStatus.message}
+        {/* Database Status Button */}
+        <button
+          type="button"
+          onClick={onOpenCloudModal}
+          className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-800 text-[11px] text-neutral-300 font-medium mr-1 transition-colors cursor-pointer group"
+          title="Click to configure Cloud Database & Real-Time Sync"
         >
-          <Database className={`w-3 h-3 ${dbStatus.online ? 'text-emerald-400' : 'text-sky-400'}`} />
-          <span className="truncate max-w-[130px]">{dbStatus.online ? 'DB Connected' : 'IndexedDB'}</span>
+          <Cloud className={`w-3 h-3 ${dbStatus.online ? 'text-emerald-400' : 'text-sky-400'}`} />
+          <span className="truncate max-w-[130px] group-hover:text-white transition-colors">
+            {dbStatus.message || (dbStatus.online ? 'Cloud Synced' : 'IndexedDB')}
+          </span>
           <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.online ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`} />
-        </div>
+        </button>
 
         <button
           onClick={onOpenUrlModal}

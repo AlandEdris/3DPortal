@@ -28,6 +28,7 @@ interface ModelLibraryProps {
   onRenameModel: (id: string, newName: string) => void;
   onUploadFiles: (files: FileList | File[]) => void;
   onOpenUrlModal: () => void;
+  onOpenCloudModal?: () => void;
   isOpen: boolean;
   onClose: () => void;
   onLoadDefaults: () => void;
@@ -43,6 +44,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   onRenameModel,
   onUploadFiles,
   onOpenUrlModal,
+  onOpenCloudModal,
   isOpen,
   onClose,
   onLoadDefaults,
@@ -375,12 +377,17 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
 
       {/* Footer Info: Database Status & Reload */}
       <div className="p-3 border-t border-neutral-800/80 text-[11px] flex items-center justify-between bg-neutral-950/70">
-        <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onOpenCloudModal}
+          className="flex items-center gap-1.5 text-neutral-300 hover:text-white transition-colors cursor-pointer group text-left"
+          title="Click to configure Real-Time Online Database Sync"
+        >
           <Database className={`w-3.5 h-3.5 ${dbStatus.online ? 'text-emerald-400' : 'text-sky-400'}`} />
-          <span className="text-neutral-300 font-medium">
-            {dbStatus.online ? 'DB Connected & Synced' : 'Local IndexedDB'}
+          <span className="font-medium group-hover:underline">
+            {dbStatus.message || (dbStatus.online ? 'Cloud Synced' : 'Local IndexedDB')}
           </span>
-        </div>
+        </button>
         <button
           onClick={onLoadDefaults}
           className="text-neutral-400 hover:text-neutral-200 flex items-center gap-1 transition-colors hover:underline"

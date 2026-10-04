@@ -14,6 +14,15 @@ import { UploadModal } from './components/UploadModal';
 import { SnapshotModal } from './components/SnapshotModal';
 import { RenameModal } from './components/RenameModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { CloudConfigModal } from './components/CloudConfigModal';
+import {
+  isCloudConfigured,
+  subscribeToCloudModels,
+  saveModelToCloud,
+  updateModelInCloud,
+  deleteModelFromCloud,
+  getFirebaseConfig,
+} from './utils/firebase';
 import {
   LightingPreset,
   RenderMode,
@@ -94,6 +103,8 @@ export default function App() {
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<ModelItem | null>(null);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [cloudSyncVersion, setCloudSyncVersion] = useState(0);
   const [globalDragActive, setGlobalDragActive] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -114,9 +125,23 @@ export default function App() {
     async function initPlatform() {
       try {
         await requestPersistentStorage();
-        const serverStatus = await checkServerStatus();
-        if (!isCancelled) {
-          setDbStatus(serverStatus);
+        
+        // Check Cloud status
+        const isCloud = isCloudConfigured();
+        const firebaseConfig = getFirebaseConfig();
+
+        if (isCloud && firebaseConfig?.projectId) {
+          if (!isCancelled) {
+            setDbStatus({
+              online: true,
+              message: `Cloud: ${firebaseConfig.projectId}`,
+            });
+          }
+        } else {
+          const serverStatus = await checkServerStatus();
+          if (!isCancelled) {
+            setDbStatus(serverStatus.online ? serverStatus : { online: false, message: 'Local (Click to Sync)' });
+          }
         }
 
         const storedModels = await getAllModelsFromDB();
@@ -171,7 +196,36 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [cloudSyncVersion]);
+
+  // 1b. Real-Time Cloud Firestore Sync Listener
+  useEffect(() => {
+    if (!isCloudConfigured()) return;
+
+    const unsubscribe = subscribeToCloudModels(
+      (cloudModels) => {
+        if (cloudModels && cloudModels.length > 0) {
+          setModels(cloudModels);
+          setCurrentModel((prev) => {
+            if (!prev) return cloudModels[0];
+            const match = cloudModels.find((m) => m.id === prev.id);
+            return match || cloudModels[0];
+          });
+          // Cache in local IndexedDB for fast offline startup
+          for (const cm of cloudModels) {
+            saveModelToDB(cm).catch(() => {});
+          }
+        }
+      },
+      (err) => {
+        console.warn('Real-time cloud sync warning, using local fallback:', err);
+      }
+    );
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [cloudSyncVersion]);
 
   // 2. Window Drag and Drop Handling for any GLB or ZIP
   useEffect(() => {
@@ -307,6 +361,11 @@ export default function App() {
 
         newItems.push(newItem);
         await saveModelToDB(newItem);
+        if (isCloudConfigured()) {
+          saveModelToCloud(newItem).catch((err) =>
+            console.warn('Cloud sync error on upload:', err)
+          );
+        }
       }
 
       if (newItems.length > 0) {
@@ -391,6 +450,11 @@ export default function App() {
         };
 
         await saveModelToDB(newItem);
+        if (isCloudConfigured()) {
+          saveModelToCloud(newItem).catch((err) =>
+            console.warn('Cloud sync error on import:', err)
+          );
+        }
         setModels((prev) => [newItem, ...prev]);
         setCurrentModel(newItem);
         setMaterialOverrides({});
@@ -423,6 +487,11 @@ export default function App() {
       }
 
       await updateModelInDB(id, { name: trimmed });
+      if (isCloudConfigured()) {
+        updateModelInCloud(id, { name: trimmed }).catch((err) =>
+          console.warn('Cloud sync error on rename:', err)
+        );
+      }
       showToast(`Renamed to "${trimmed}" & updated in database.`);
     },
     [currentModel, showToast]
@@ -435,6 +504,12 @@ export default function App() {
         await deleteModelFromDB(id);
       } catch (err) {
         console.error('Failed to delete model from DB:', err);
+      }
+
+      if (isCloudConfigured()) {
+        deleteModelFromCloud(id).catch((err) =>
+          console.warn('Cloud sync error on delete:', err)
+        );
       }
 
       const nextModels = models.filter((m) => m.id !== id);
@@ -459,6 +534,9 @@ export default function App() {
     localStorage.setItem('voxelorbit_db_initialized', 'true');
     for (const m of DEFAULT_AIRCRAFT_MODELS) {
       await saveModelToDB(m);
+      if (isCloudConfigured()) {
+        saveModelToCloud(m).catch(() => {});
+      }
     }
     setModels((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
@@ -502,6 +580,10 @@ export default function App() {
           prev.map((m) => (m.id === currentModel.id ? { ...m, thumbnailUrl: dataUrl } : m))
         );
         setCurrentModel((prev) => (prev ? { ...prev, thumbnailUrl: dataUrl } : null));
+        updateModelInDB(currentModel.id, { thumbnailUrl: dataUrl }).catch(() => {});
+        if (isCloudConfigured()) {
+          updateModelInCloud(currentModel.id, { thumbnailUrl: dataUrl }).catch(() => {});
+        }
       }
     },
     [currentModel]
@@ -598,6 +680,7 @@ export default function App() {
         isInspectorOpen={isInspectorOpen}
         onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
         onToggleFullscreen={handleToggleFullscreen}
+        onOpenCloudModal={() => setIsCloudModalOpen(true)}
         dbStatus={dbStatus}
       />
 
@@ -625,6 +708,7 @@ export default function App() {
           isOpen={isLibraryOpen}
           onClose={() => setIsLibraryOpen(false)}
           onLoadDefaults={handleLoadDefaults}
+          onOpenCloudModal={() => setIsCloudModalOpen(true)}
           dbStatus={dbStatus}
         />
 
@@ -792,6 +876,16 @@ export default function App() {
         onClose={() => setModelToDelete(null)}
         model={modelToDelete}
         onConfirm={handleDeleteModel}
+      />
+
+      {/* Cloud Database Sync Modal */}
+      <CloudConfigModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        onConfigChanged={() => {
+          setCloudSyncVersion((v) => v + 1);
+          showToast('Cloud database configuration updated!');
+        }}
       />
 
       {/* Toast Notification */}
