@@ -1,5 +1,5 @@
 {
-  "name": "VoxelOrbit - 3D GLB Studio Portal",
+  "name": "3D Neo Portal",
   "description": "Professional 3D GLB & GLTF model previewing portal platform with responsive real-time WebGL studio lighting, inspection metrics, wireframes, animation playback, and drag-and-drop file import.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

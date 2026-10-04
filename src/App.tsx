@@ -439,6 +439,17 @@ export default function App() {
 
         newItems.push(newItem);
         await saveModelToDB(newItem);
+
+        // Record activity log for newly added model
+        logActivity(
+          'added',
+          newItem.id,
+          newItem.name,
+          creatorDisplayName,
+          currentUser?.uid,
+          `Added 3D plane "${newItem.name}" (${(newItem.size / (1024 * 1024)).toFixed(2)} MB)`
+        ).catch(console.warn);
+
         if (isCloudConfigured()) {
           saveModelToCloud(
             newItem,
@@ -567,6 +578,17 @@ export default function App() {
         };
 
         await saveModelToDB(newItem);
+
+        // Record activity log for newly imported model
+        logActivity(
+          'added',
+          newItem.id,
+          newItem.name,
+          creatorDisplayName,
+          currentUser?.uid,
+          `Imported 3D plane "${newItem.name}" from URL (${(newItem.size / (1024 * 1024)).toFixed(2)} MB)`
+        ).catch(console.warn);
+
         if (isCloudConfigured()) {
           saveModelToCloud(
             newItem,
@@ -599,6 +621,9 @@ export default function App() {
       const trimmed = newName.trim();
       if (!trimmed) return;
 
+      const targetModel = models.find((m) => m.id === id);
+      const oldName = targetModel ? formatModelDisplayName(targetModel.name) : id;
+
       setModels((prev) =>
         prev.map((m) => (m.id === id ? { ...m, name: trimmed, updatedAt: Date.now() } : m))
       );
@@ -608,26 +633,58 @@ export default function App() {
       }
 
       await updateModelInDB(id, { name: trimmed });
+
+      const userDisplayName =
+        activeUserNickname?.trim() ||
+        currentUser?.email ||
+        'Authorized User';
+
+      // Always record rename immediately in Activity Logs
+      await logActivity(
+        'renamed',
+        id,
+        trimmed,
+        userDisplayName,
+        currentUser?.uid,
+        `Renamed plane from "${oldName}" to "${trimmed}"`
+      );
+
       if (isCloudConfigured()) {
         updateModelInCloud(
           id,
           { name: trimmed },
-          currentUser?.email || 'Authorized User',
+          userDisplayName,
           currentUser?.uid,
-          `Renamed model to "${trimmed}"`
+          `Renamed plane from "${oldName}" to "${trimmed}"`
         ).catch((err) =>
           console.warn('Cloud sync error on rename:', err)
         );
       }
       showToast(`Renamed to "${trimmed}" & updated in database.`);
     },
-    [currentModel, currentUser, showToast]
+    [models, currentModel, currentUser, activeUserNickname, showToast]
   );
 
   // 6. Delete Model
   const handleDeleteModel = useCallback(
     async (id: string) => {
       const targetModel = models.find((m) => m.id === id);
+      const modelDisplayName = targetModel ? formatModelDisplayName(targetModel.name) : id;
+      const userDisplayName =
+        activeUserNickname?.trim() ||
+        currentUser?.email ||
+        'Authorized User';
+
+      // Always record delete immediately in Activity Logs
+      await logActivity(
+        'deleted',
+        id,
+        modelDisplayName,
+        userDisplayName,
+        currentUser?.uid,
+        `Deleted plane "${modelDisplayName}" from library`
+      );
+
       try {
         await deleteModelFromDB(id);
       } catch (err) {
@@ -638,7 +695,7 @@ export default function App() {
         deleteModelFromCloud(
           id,
           targetModel?.name,
-          currentUser?.email || 'Authorized User',
+          userDisplayName,
           currentUser?.uid
         ).catch((err) =>
           console.warn('Cloud sync error on delete:', err)
@@ -658,7 +715,7 @@ export default function App() {
       }
       showToast('Model removed from library & database.');
     },
-    [models, currentModel, showToast]
+    [models, currentModel, currentUser, activeUserNickname, showToast]
   );
 
   // 7. Reload Default Aircraft Fleet
@@ -757,8 +814,21 @@ export default function App() {
           ...updates,
         },
       }));
+
+      if (currentModel) {
+        const userDisplayName = activeUserNickname?.trim() || currentUser?.email || 'Authorized User';
+        const changedProps = Object.keys(updates).join(', ');
+        logActivity(
+          'modified',
+          currentModel.id,
+          formatModelDisplayName(currentModel.name),
+          userDisplayName,
+          currentUser?.uid,
+          `Modified material properties (${changedProps})`
+        ).catch(console.warn);
+      }
     },
-    []
+    [currentModel, activeUserNickname, currentUser]
   );
 
   // 13. Fullscreen Toggle

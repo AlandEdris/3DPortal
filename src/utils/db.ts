@@ -321,7 +321,7 @@ export function exportModelsMetadataJSON(models: ModelItem[]): void {
   const exportData = {
     exportedAt: new Date().toISOString(),
     version: '1.0',
-    platform: 'VoxelOrbit 3D Studio',
+    platform: '3D Neo Portal',
     count: models.length,
     models: models.map((m) => ({
       id: m.id,
@@ -342,7 +342,7 @@ export function exportModelsMetadataJSON(models: ModelItem[]): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `voxelorbit-library-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `3d-neo-portal-backup-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

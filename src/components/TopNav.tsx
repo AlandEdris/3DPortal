@@ -81,7 +81,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             <Box className="w-4 h-4" />
           </div>
           <div className="flex flex-col">
-            <span className="font-semibold text-sm tracking-tight text-neutral-100">VoxelOrbit</span>
+            <span className="font-semibold text-sm tracking-tight text-neutral-100">3D Neo Portal</span>
             <span className="text-[10px] text-neutral-400 hidden sm:inline">3D GLB Studio Portal</span>
           </div>
         </div>

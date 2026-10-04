@@ -31,7 +31,7 @@ import {
   deleteObject,
   FirebaseStorage,
 } from 'firebase/storage';
-import { ModelItem, ActivityLog } from '../types/model';
+import { ModelItem, ActivityLog, formatModelDisplayName } from '../types/model';
 
 export const DEFAULT_FIREBASE_CONFIG: FirebaseOptions = {
   apiKey: 'AIzaSyASC0WRkmv9RnfGEBR9e6EOi5JQHwsmTg8',
@@ -253,6 +253,16 @@ export async function updateUserNickname(
     if (typeof window !== 'undefined') {
       localStorage.setItem(`voxelorbit_nick_${user.uid}`, trimmed);
     }
+
+    // 4. Record activity log for profile update
+    await logActivity(
+      'modified',
+      user.uid,
+      'User Profile',
+      trimmed,
+      user.uid,
+      `Updated user profile nickname to "${trimmed}"`
+    );
 
     return { success: true };
   } catch (err: any) {
@@ -580,7 +590,7 @@ export async function updateModelInCloud(
     };
     delete cleanUpdates.fileBlob;
 
-    await updateDoc(docRef, cleanUpdates);
+    await setDoc(docRef, cleanUpdates, { merge: true });
 
     // Record activity audit log if naming or structural changes occurred
     if (updates.name) {
@@ -700,7 +710,7 @@ export async function getAllModelsFromCloud(): Promise<ModelItem[]> {
 }
 
 /**
- * Log an audit action to Firestore.
+ * Log an audit action to Firestore and local activity store.
  */
 export async function logActivity(
   action: 'added' | 'modified' | 'deleted' | 'renamed' | 'duplicate_skipped',
@@ -710,22 +720,36 @@ export async function logActivity(
   userId?: string,
   details?: string
 ): Promise<void> {
+  const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const entry: ActivityLog = {
+    id: logId,
+    action,
+    modelId,
+    modelName: formatModelDisplayName(modelName),
+    userEmail: userEmail || 'Authorized User',
+    userId: userId || '',
+    timestamp: Date.now(),
+    details: details || '',
+  };
+
+  // 1. Immediately store in local storage cache for instant UI feedback
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('neo_portal_activity_logs');
+      const list: ActivityLog[] = raw ? JSON.parse(raw) : [];
+      list.unshift(entry);
+      if (list.length > 200) list.length = 200;
+      localStorage.setItem('neo_portal_activity_logs', JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('neo_portal_log_added', { detail: entry }));
+    }
+  } catch {}
+
+  // 2. Persist to Firestore
   const db = getFirestoreDB();
   if (!db) return;
 
   try {
-    const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const logDoc = doc(db, COLLECTION_LOGS, logId);
-    const entry: ActivityLog = {
-      id: logId,
-      action,
-      modelId,
-      modelName,
-      userEmail: userEmail || 'Authorized User',
-      userId: userId || '',
-      timestamp: Date.now(),
-      details: details || '',
-    };
     await setDoc(logDoc, entry);
   } catch (err) {
     console.warn('Could not record activity log in Firestore:', err);
@@ -739,40 +763,93 @@ export function subscribeToActivityLogs(
   onUpdate: (logs: ActivityLog[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe | null {
+  const getLocalLogs = (): ActivityLog[] => {
+    try {
+      if (typeof window === 'undefined') return [];
+      const raw = localStorage.getItem('neo_portal_activity_logs');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  let localLogs = getLocalLogs();
+  let cloudLogs: ActivityLog[] = [];
+
+  const mergeAndEmit = () => {
+    const map = new Map<string, ActivityLog>();
+    localLogs.forEach((l) => map.set(l.id, l));
+    cloudLogs.forEach((l) => map.set(l.id, l));
+    const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+    onUpdate(merged);
+  };
+
+  // Emit local logs immediately
+  mergeAndEmit();
+
+  const handleCustomEvent = (e: any) => {
+    if (e.detail) {
+      localLogs = [e.detail, ...localLogs];
+      mergeAndEmit();
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('neo_portal_log_added', handleCustomEvent);
+  }
+
   const db = getFirestoreDB();
-  if (!db) return null;
+  if (!db) {
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('neo_portal_log_added', handleCustomEvent);
+      }
+    };
+  }
 
   try {
     const colRef = collection(db, COLLECTION_LOGS);
     const q = query(colRef, orderBy('timestamp', 'desc'), limit(150));
 
-    return onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (snapshot) => {
-        const logs: ActivityLog[] = [];
+        const fetched: ActivityLog[] = [];
         snapshot.forEach((d) => {
           const data = d.data();
-          logs.push({
+          fetched.push({
             id: data.id || d.id,
             action: data.action || 'modified',
             modelId: data.modelId || '',
-            modelName: data.modelName || 'Model',
+            modelName: formatModelDisplayName(data.modelName || 'Model'),
             userEmail: data.userEmail || 'Authorized User',
             userId: data.userId || '',
             timestamp: Number(data.timestamp) || Date.now(),
             details: data.details || '',
           });
         });
-        onUpdate(logs);
+        cloudLogs = fetched;
+        mergeAndEmit();
       },
       (err) => {
         console.warn('Activity logs subscription error:', err);
         onError?.(err);
+        mergeAndEmit();
       }
     );
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('neo_portal_log_added', handleCustomEvent);
+      }
+      if (unsubFirestore) unsubFirestore();
+    };
   } catch (err: any) {
     console.warn('Failed to listen for activity logs:', err);
     onError?.(err);
-    return null;
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('neo_portal_log_added', handleCustomEvent);
+      }
+    };
   }
 }
