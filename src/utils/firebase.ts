@@ -556,17 +556,6 @@ export async function saveModelToCloud(
     }
 
     await setDoc(docRef, cleanRecord, { merge: true });
-
-    // Record activity audit log
-    await logActivity(
-      'added',
-      model.id,
-      model.name,
-      model.createdBy || userEmail || 'Authorized User',
-      model.createdById || userId || '',
-      `Saved 3D model (${(model.size / (1024 * 1024)).toFixed(2)} MB)`
-    );
-
     return true;
   } catch (err) {
     console.warn('Failed to save model to Firestore:', err);
@@ -597,28 +586,6 @@ export async function updateModelInCloud(
     delete cleanUpdates.fileBlob;
 
     await setDoc(docRef, cleanUpdates, { merge: true });
-
-    // Record activity audit log if naming or structural changes occurred
-    if (updates.name) {
-      await logActivity(
-        'renamed',
-        id,
-        updates.name,
-        userEmail || 'Authorized User',
-        userId || '',
-        logDescription || `Renamed model to "${updates.name}"`
-      );
-    } else if (logDescription) {
-      await logActivity(
-        'modified',
-        id,
-        updates.name || id,
-        userEmail || 'Authorized User',
-        userId || '',
-        logDescription
-      );
-    }
-
     return true;
   } catch (err) {
     console.warn('Failed to update model in Firestore:', err);
@@ -649,16 +616,6 @@ export async function deleteModelFromCloud(
       const fileRef = storageRef(storage, `models/${id}/${cleanFileName}`);
       deleteObject(fileRef).catch(() => {});
     }
-
-    // Record activity audit log
-    await logActivity(
-      'deleted',
-      id,
-      modelName || id,
-      userEmail || 'Authorized User',
-      userId || '',
-      `Deleted model "${modelName || id}" from cloud database`
-    );
 
     return true;
   } catch (err) {
@@ -785,12 +742,36 @@ export function subscribeToActivityLogs(
   let localLogs = getLocalLogs();
   let cloudLogs: ActivityLog[] = [];
 
+  const deduplicateLogs = (rawLogs: ActivityLog[]): ActivityLog[] => {
+    const seenSignatures = new Set<string>();
+    const seenIds = new Set<string>();
+    const result: ActivityLog[] = [];
+
+    // Sort by timestamp desc
+    const sorted = [...rawLogs].sort((a, b) => b.timestamp - a.timestamp);
+
+    for (const log of sorted) {
+      if (seenIds.has(log.id)) continue;
+      seenIds.add(log.id);
+
+      // Signature: action + modelId + normalized details + 10s time window
+      const timeBucket = Math.floor(log.timestamp / 10000);
+      const cleanDetails = (log.details || '').trim().toLowerCase();
+      const signature = `${log.action}_${log.modelId}_${cleanDetails}_${timeBucket}`;
+
+      if (seenSignatures.has(signature)) {
+        continue;
+      }
+      seenSignatures.add(signature);
+      result.push(log);
+    }
+    return result;
+  };
+
   const mergeAndEmit = () => {
-    const map = new Map<string, ActivityLog>();
-    localLogs.forEach((l) => map.set(l.id, l));
-    cloudLogs.forEach((l) => map.set(l.id, l));
-    const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
-    onUpdate(merged);
+    const combined = [...cloudLogs, ...localLogs];
+    const deduplicated = deduplicateLogs(combined);
+    onUpdate(deduplicated);
   };
 
   // Emit local logs immediately
