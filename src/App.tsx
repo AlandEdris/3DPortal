@@ -15,6 +15,8 @@ import { SnapshotModal } from './components/SnapshotModal';
 import { RenameModal } from './components/RenameModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { CloudConfigModal } from './components/CloudConfigModal';
+import { LoginPage } from './components/LoginPage';
+import { ActivityLogsModal } from './components/ActivityLogsModal';
 import {
   isCloudConfigured,
   subscribeToCloudModels,
@@ -22,7 +24,10 @@ import {
   updateModelInCloud,
   deleteModelFromCloud,
   getFirebaseConfig,
+  subscribeToAuth,
+  signOutUser,
 } from './utils/firebase';
+import type { User } from 'firebase/auth';
 import {
   LightingPreset,
   RenderMode,
@@ -105,10 +110,24 @@ export default function App() {
   const [modelToDelete, setModelToDelete] = useState<ModelItem | null>(null);
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [cloudSyncVersion, setCloudSyncVersion] = useState(0);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isActivityLogsOpen, setIsActivityLogsOpen] = useState(false);
   const [globalDragActive, setGlobalDragActive] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const dragCounter = useRef(0);
+
+  // Subscribe to Firebase Auth
+  useEffect(() => {
+    const unsub = subscribeToAuth((user) => {
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
 
   // Toast notification helper
   const showToast = useCallback((msg: string) => {
@@ -117,6 +136,12 @@ export default function App() {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 4000);
   }, []);
+
+  const handleSignOut = useCallback(async () => {
+    await signOutUser();
+    setCurrentUser(null);
+    showToast('Signed out of 3D Portal');
+  }, [showToast]);
 
   // 1. Initial Load: Retrieve from Database or Load Real Aircraft GLBs
   useEffect(() => {
@@ -278,6 +303,7 @@ export default function App() {
     async (files: FileList | File[]) => {
       const fileArray = Array.from(files);
       const glbOrGltfFiles: File[] = [];
+      let zipExtractedCount = 0;
 
       // Process dropped files and unpack any .zip archives
       for (const f of fileArray) {
@@ -302,6 +328,7 @@ export default function App() {
                     : 'model/gltf+json',
                 });
                 glbOrGltfFiles.push(extractedFile);
+                zipExtractedCount++;
               }
             }
           } catch (err) {
@@ -315,6 +342,10 @@ export default function App() {
         ) {
           glbOrGltfFiles.push(f);
         }
+      }
+
+      if (zipExtractedCount > 0) {
+        showToast(`Extracted ${zipExtractedCount} 3D model(s) from ZIP archive!`);
       }
 
       if (glbOrGltfFiles.length === 0) {
@@ -347,6 +378,8 @@ export default function App() {
           fileBlob: file,
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          createdBy: currentUser?.email || 'Authorized User',
+          createdById: currentUser?.uid || '',
           metrics: {
             triangles: 0,
             vertices: 0,
@@ -362,7 +395,11 @@ export default function App() {
         newItems.push(newItem);
         await saveModelToDB(newItem);
         if (isCloudConfigured()) {
-          saveModelToCloud(newItem).catch((err) =>
+          saveModelToCloud(
+            newItem,
+            currentUser?.email || 'Authorized User',
+            currentUser?.uid
+          ).catch((err) =>
             console.warn('Cloud sync error on upload:', err)
           );
         }
@@ -437,6 +474,8 @@ export default function App() {
           fileBlob: blob,
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          createdBy: currentUser?.email || 'Authorized User',
+          createdById: currentUser?.uid || '',
           metrics: {
             triangles: 0,
             vertices: 0,
@@ -451,7 +490,11 @@ export default function App() {
 
         await saveModelToDB(newItem);
         if (isCloudConfigured()) {
-          saveModelToCloud(newItem).catch((err) =>
+          saveModelToCloud(
+            newItem,
+            currentUser?.email || 'Authorized User',
+            currentUser?.uid
+          ).catch((err) =>
             console.warn('Cloud sync error on import:', err)
           );
         }
@@ -488,18 +531,25 @@ export default function App() {
 
       await updateModelInDB(id, { name: trimmed });
       if (isCloudConfigured()) {
-        updateModelInCloud(id, { name: trimmed }).catch((err) =>
+        updateModelInCloud(
+          id,
+          { name: trimmed },
+          currentUser?.email || 'Authorized User',
+          currentUser?.uid,
+          `Renamed model to "${trimmed}"`
+        ).catch((err) =>
           console.warn('Cloud sync error on rename:', err)
         );
       }
       showToast(`Renamed to "${trimmed}" & updated in database.`);
     },
-    [currentModel, showToast]
+    [currentModel, currentUser, showToast]
   );
 
   // 6. Delete Model
   const handleDeleteModel = useCallback(
     async (id: string) => {
+      const targetModel = models.find((m) => m.id === id);
       try {
         await deleteModelFromDB(id);
       } catch (err) {
@@ -507,7 +557,12 @@ export default function App() {
       }
 
       if (isCloudConfigured()) {
-        deleteModelFromCloud(id).catch((err) =>
+        deleteModelFromCloud(
+          id,
+          targetModel?.name,
+          currentUser?.email || 'Authorized User',
+          currentUser?.uid
+        ).catch((err) =>
           console.warn('Cloud sync error on delete:', err)
         );
       }
@@ -637,6 +692,20 @@ export default function App() {
     }
   }, []);
 
+  // 14. Authentication Gatekeeper
+  if (isAuthLoading) {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-neutral-950 text-neutral-100">
+        <div className="w-10 h-10 border-2 border-neutral-700 border-t-sky-400 rounded-full animate-spin mb-3" />
+        <p className="text-xs font-medium text-neutral-400">Connecting to Firebase Cloud...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginPage onLoginSuccess={() => {}} />;
+  }
+
   return (
     <div className="relative w-screen h-screen overflow-hidden flex flex-col bg-neutral-950 text-neutral-100 font-sans">
       {/* Global Drag-and-Drop Overlay */}
@@ -681,6 +750,9 @@ export default function App() {
         onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
         onToggleFullscreen={handleToggleFullscreen}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
+        onOpenActivityLogs={() => setIsActivityLogsOpen(true)}
+        userEmail={currentUser?.email}
+        onSignOut={handleSignOut}
         dbStatus={dbStatus}
       />
 
@@ -886,6 +958,12 @@ export default function App() {
           setCloudSyncVersion((v) => v + 1);
           showToast('Cloud database configuration updated!');
         }}
+      />
+
+      {/* Activity & Audit Logs Modal */}
+      <ActivityLogsModal
+        isOpen={isActivityLogsOpen}
+        onClose={() => setIsActivityLogsOpen(false)}
       />
 
       {/* Toast Notification */}

@@ -22,11 +22,24 @@ export interface ModelItem {
   thumbnailUrl?: string;
   createdAt: number;
   updatedAt?: number;
+  createdBy?: string;
+  createdById?: string;
   isSample?: boolean;
   isDefault?: boolean;
   serverSynced?: boolean;
   tags?: string[];
   metrics: ModelMetrics;
+}
+
+export interface ActivityLog {
+  id: string;
+  action: 'added' | 'modified' | 'deleted' | 'renamed';
+  modelId: string;
+  modelName: string;
+  userEmail: string;
+  userId?: string;
+  timestamp: number;
+  details?: string;
 }
 
 export type LightingPreset = 'studio' | 'cyber' | 'sunset' | 'darkroom' | 'daylight';

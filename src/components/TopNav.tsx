@@ -11,6 +11,9 @@ import {
   Edit3,
   Database,
   Cloud,
+  History,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
 import { ModelItem } from '../types/model';
 
@@ -23,6 +26,9 @@ interface TopNavProps {
   onTakeSnapshot: () => void;
   onOpenRenameModal?: () => void;
   onOpenCloudModal?: () => void;
+  onOpenActivityLogs?: () => void;
+  userEmail?: string | null;
+  onSignOut?: () => void;
   isLibraryOpen: boolean;
   onToggleLibrary: () => void;
   isInspectorOpen: boolean;
@@ -40,6 +46,9 @@ export const TopNav: React.FC<TopNavProps> = ({
   onTakeSnapshot,
   onOpenRenameModal,
   onOpenCloudModal,
+  onOpenActivityLogs,
+  userEmail,
+  onSignOut,
   isLibraryOpen,
   onToggleLibrary,
   isInspectorOpen,
@@ -159,7 +168,18 @@ export const TopNav: React.FC<TopNavProps> = ({
           title="Upload GLB File or ZIP"
         >
           <Upload className="w-3.5 h-3.5" />
-          <span>Upload GLB</span>
+          <span>Upload GLB / ZIP</span>
+        </button>
+
+        {/* Activity & Audit Logs Button */}
+        <button
+          id="btn-nav-activity-logs"
+          onClick={onOpenActivityLogs}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+          title="View System Activity & Audit Logs"
+        >
+          <History className="w-3.5 h-3.5 text-sky-400" />
+          <span className="hidden lg:inline">Activity Logs</span>
         </button>
 
         <button
@@ -169,6 +189,27 @@ export const TopNav: React.FC<TopNavProps> = ({
         >
           <Camera className="w-4 h-4" />
         </button>
+
+        {/* User Profile & Sign Out */}
+        {userEmail && (
+          <div className="flex items-center gap-1 pl-1 border-l border-neutral-800">
+            <div
+              className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-900/60 border border-neutral-800/60 text-[11px] text-neutral-300"
+              title={`Signed in as ${userEmail}`}
+            >
+              <UserIcon className="w-3.5 h-3.5 text-sky-400" />
+              <span className="truncate max-w-[130px]">{userEmail}</span>
+            </div>
+            <button
+              id="btn-signout"
+              onClick={onSignOut}
+              className="p-2 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition-colors cursor-pointer"
+              title="Sign Out of 3D Portal"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <button
           onClick={onToggleFullscreen}

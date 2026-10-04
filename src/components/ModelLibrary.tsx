@@ -15,6 +15,8 @@ import {
   Database,
   ArrowDownToLine,
   Plane,
+  User,
+  Clock,
 } from 'lucide-react';
 import { ModelItem } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
@@ -330,6 +332,32 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                           <span>{formatFileSize(model.size)}</span>
                           <span aria-hidden="true" className="text-neutral-600">·</span>
                           <span>{formatTriangles(model.metrics?.triangles || 0)} tris</span>
+                        </div>
+
+                        {/* Author & Timestamp */}
+                        <div className="flex items-center gap-2 text-[10px] text-neutral-400 mt-1.5 pt-1.5 border-t border-neutral-800/60">
+                          <div
+                            className="flex items-center gap-1 truncate max-w-[110px]"
+                            title={`Added by: ${model.createdBy || 'Default System'}`}
+                          >
+                            <User className="w-3 h-3 text-sky-400 shrink-0" />
+                            <span className="truncate text-neutral-300 font-medium">
+                              {model.createdBy ? model.createdBy.split('@')[0] : 'System'}
+                            </span>
+                          </div>
+                          <span className="text-neutral-600">·</span>
+                          <div
+                            className="flex items-center gap-1 shrink-0 text-neutral-400"
+                            title={new Date(model.createdAt).toLocaleString()}
+                          >
+                            <Clock className="w-3 h-3 text-indigo-400 shrink-0" />
+                            <span>
+                              {new Date(model.createdAt).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </span>
+                          </div>
                         </div>
                       </>
                     )}

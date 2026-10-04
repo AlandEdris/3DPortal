@@ -387,10 +387,33 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 </div>
               )}
 
-              <div className="flex items-center gap-2 pt-1 border-t border-neutral-800/80 text-[11px] text-neutral-400 font-mono">
-                <span className="text-sky-400 font-semibold">GLB Format</span>
-                <span>·</span>
-                <span className="text-emerald-400">Database Synced</span>
+              <div className="flex items-center justify-between pt-1 border-t border-neutral-800/80 text-[11px] font-mono">
+                <span className="text-sky-400 font-semibold">GLB Model</span>
+                <span className="text-emerald-400">Cloud Synced</span>
+              </div>
+
+              {/* Added By & Timestamp details */}
+              <div className="pt-2 border-t border-neutral-800/80 text-[11px] space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500">Added By:</span>
+                  <span className="text-neutral-300 font-medium">
+                    {currentModel?.createdBy || 'Default System Fleet'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500">Added On:</span>
+                  <span className="text-neutral-300 font-mono text-[10px]">
+                    {currentModel?.createdAt
+                      ? new Date(currentModel.createdAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Initial Provision'}
+                  </span>
+                </div>
               </div>
             </div>
 

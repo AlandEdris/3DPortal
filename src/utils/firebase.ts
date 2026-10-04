@@ -12,20 +12,50 @@ import {
   Unsubscribe,
   query,
   orderBy,
+  limit,
 } from 'firebase/firestore';
-import { ModelItem } from '../types/model';
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User,
+  Auth,
+} from 'firebase/auth';
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+  FirebaseStorage,
+} from 'firebase/storage';
+import { ModelItem, ActivityLog } from '../types/model';
+
+export const DEFAULT_FIREBASE_CONFIG: FirebaseOptions = {
+  apiKey: 'AIzaSyASC0WRkmv9RnfGEBR9e6EOi5JQHwsmTg8',
+  authDomain: 'dportal-bcce2.firebaseapp.com',
+  projectId: 'dportal-bcce2',
+  storageBucket: 'dportal-bcce2.firebasestorage.app',
+  messagingSenderId: '564498646134',
+  appId: '1:564498646134:web:5f692fdba77e0a7ab80b57',
+  measurementId: 'G-X95SFJRSK0',
+};
 
 const STORAGE_KEY = 'voxelorbit_firebase_config';
-const COLLECTION_NAME = 'voxelorbit_models';
+const COLLECTION_MODELS = 'voxelorbit_models';
+const COLLECTION_LOGS = 'voxelorbit_activity_logs';
 
 let appInstance: FirebaseApp | null = null;
 let firestoreInstance: Firestore | null = null;
+let authInstance: Auth | null = null;
+let storageInstance: FirebaseStorage | null = null;
 
 /**
- * Get active Firebase configuration from localStorage or Vite environment variables.
+ * Get active Firebase configuration (custom override, env vars, or default configuration).
  */
-export function getFirebaseConfig(): FirebaseOptions | null {
-  // 1. Check user-configured config in localStorage
+export function getFirebaseConfig(): FirebaseOptions {
+  // 1. Check user-configured override in localStorage
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -36,11 +66,11 @@ export function getFirebaseConfig(): FirebaseOptions | null {
         }
       }
     } catch (e) {
-      console.warn('Failed to parse stored Firebase config:', e);
+      console.warn('Failed to parse stored Firebase config override:', e);
     }
   }
 
-  // 2. Check Vite environment variables (VITE_FIREBASE_*)
+  // 2. Check Vite environment variables
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     const env = import.meta.env;
     if (env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_PROJECT_ID) {
@@ -55,7 +85,19 @@ export function getFirebaseConfig(): FirebaseOptions | null {
     }
   }
 
-  return null;
+  // 3. Built-in default configuration
+  return DEFAULT_FIREBASE_CONFIG;
+}
+
+/**
+ * Initialize or get active Firebase App.
+ */
+export function getFirebaseApp(): FirebaseApp {
+  if (appInstance) return appInstance;
+  const config = getFirebaseConfig();
+  const apps = getApps();
+  appInstance = apps.length > 0 ? apps[0] : initializeApp(config);
+  return appInstance;
 }
 
 /**
@@ -63,14 +105,9 @@ export function getFirebaseConfig(): FirebaseOptions | null {
  */
 export function getFirestoreDB(): Firestore | null {
   if (firestoreInstance) return firestoreInstance;
-
-  const config = getFirebaseConfig();
-  if (!config) return null;
-
   try {
-    const apps = getApps();
-    appInstance = apps.length > 0 ? apps[0] : initializeApp(config);
-    firestoreInstance = getFirestore(appInstance);
+    const app = getFirebaseApp();
+    firestoreInstance = getFirestore(app);
     return firestoreInstance;
   } catch (err) {
     console.error('Failed to initialize Firebase Firestore:', err);
@@ -79,14 +116,134 @@ export function getFirestoreDB(): Firestore | null {
 }
 
 /**
- * Check if online cloud sync is configured and active.
+ * Initialize or get active Firebase Auth instance.
  */
-export function isCloudConfigured(): boolean {
-  return !!getFirebaseConfig();
+export function getFirebaseAuth(): Auth | null {
+  if (authInstance) return authInstance;
+  try {
+    const app = getFirebaseApp();
+    authInstance = getAuth(app);
+    return authInstance;
+  } catch (err) {
+    console.error('Failed to initialize Firebase Auth:', err);
+    return null;
+  }
 }
 
 /**
- * Save Firebase configuration to localStorage and re-initialize.
+ * Initialize or get active Firebase Storage instance.
+ */
+export function getFirebaseStorage(): FirebaseStorage | null {
+  if (storageInstance) return storageInstance;
+  try {
+    const app = getFirebaseApp();
+    storageInstance = getStorage(app);
+    return storageInstance;
+  } catch (err) {
+    console.warn('Failed to initialize Firebase Storage:', err);
+    return null;
+  }
+}
+
+/**
+ * Check if online cloud sync is configured.
+ */
+export function isCloudConfigured(): boolean {
+  return true; // Always configured out of the box with the default project
+}
+
+/**
+ * Sign in existing user with email and password.
+ */
+export async function signInUser(
+  email: string,
+  pass: string
+): Promise<{ user: User | null; error?: string }> {
+  const auth = getFirebaseAuth();
+  if (!auth) {
+    return { user: null, error: 'Firebase Authentication service is unavailable.' };
+  }
+
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+    return { user: cred.user };
+  } catch (err: any) {
+    console.error('Firebase Auth sign in error:', err);
+    let msg = 'Authentication failed. Please check your credentials.';
+    if (
+      err.code === 'auth/invalid-credential' ||
+      err.code === 'auth/wrong-password' ||
+      err.code === 'auth/user-not-found'
+    ) {
+      msg = 'Invalid email or password. Only registered accounts can access the portal.';
+    } else if (err.code === 'auth/invalid-email') {
+      msg = 'Please enter a valid email address.';
+    } else if (err.code === 'auth/too-many-requests') {
+      msg = 'Account temporarily locked due to repeated failed logins. Please try again in a few minutes.';
+    } else if (err.message) {
+      msg = err.message;
+    }
+    return { user: null, error: msg };
+  }
+}
+
+/**
+ * Sign out the currently authenticated user.
+ */
+export async function signOutUser(): Promise<void> {
+  const auth = getFirebaseAuth();
+  if (auth) {
+    await signOut(auth);
+  }
+}
+
+/**
+ * Subscribe to authentication state changes.
+ */
+export function subscribeToAuth(callback: (user: User | null) => void): Unsubscribe | null {
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+  return onAuthStateChanged(auth, callback);
+}
+
+/**
+ * Get currently logged-in user synchronously.
+ */
+export function getCurrentFirebaseUser(): User | null {
+  const auth = getFirebaseAuth();
+  return auth ? auth.currentUser : null;
+}
+
+/**
+ * Upload binary GLB blob to Firebase Storage and get permanent download URL.
+ */
+export async function uploadModelBlob(
+  modelId: string,
+  fileName: string,
+  blob: Blob
+): Promise<string | null> {
+  const storage = getFirebaseStorage();
+  if (!storage) return null;
+
+  try {
+    const cleanFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileRef = storageRef(storage, `models/${modelId}/${cleanFileName}`);
+    const snapshot = await uploadBytes(fileRef, blob, {
+      contentType: 'model/gltf-binary',
+      customMetadata: {
+        modelId,
+        originalName: fileName,
+      },
+    });
+    return await getDownloadURL(snapshot.ref);
+  } catch (err) {
+    console.warn('Firebase Storage upload warning (fallback to direct URL):', err);
+    return null;
+  }
+}
+
+/**
+ * Save Firebase configuration override to localStorage and re-initialize.
  */
 export function saveFirebaseConfig(config: FirebaseOptions): boolean {
   try {
@@ -96,6 +253,8 @@ export function saveFirebaseConfig(config: FirebaseOptions): boolean {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     appInstance = null;
     firestoreInstance = null;
+    authInstance = null;
+    storageInstance = null;
     return !!getFirestoreDB();
   } catch (err) {
     console.error('Failed to save Firebase config:', err);
@@ -104,13 +263,15 @@ export function saveFirebaseConfig(config: FirebaseOptions): boolean {
 }
 
 /**
- * Clear stored Firebase configuration and revert to local storage.
+ * Clear custom configuration and revert to default.
  */
 export function clearFirebaseConfig(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
     appInstance = null;
     firestoreInstance = null;
+    authInstance = null;
+    storageInstance = null;
   } catch (err) {
     console.error('Failed to clear Firebase config:', err);
   }
@@ -119,25 +280,24 @@ export function clearFirebaseConfig(): void {
 /**
  * Test connectivity to Firebase Firestore.
  */
-export async function testFirebaseConnection(configToTest?: FirebaseOptions): Promise<{ success: boolean; message: string }> {
+export async function testFirebaseConnection(
+  configToTest?: FirebaseOptions
+): Promise<{ success: boolean; message: string }> {
   try {
     const config = configToTest || getFirebaseConfig();
-    if (!config || !config.apiKey || !config.projectId) {
-      return { success: false, message: 'Missing API Key or Project ID.' };
-    }
-
     const testApp = initializeApp(config, `test-app-${Date.now()}`);
     const testDb = getFirestore(testApp);
-    const colRef = collection(testDb, COLLECTION_NAME);
-
-    // Try a lightweight query
+    const colRef = collection(testDb, COLLECTION_MODELS);
     await getDocs(colRef);
-    return { success: true, message: `Connected to Firestore project "${config.projectId}" successfully!` };
+    return {
+      success: true,
+      message: `Connected to Firestore project "${config.projectId}" successfully!`,
+    };
   } catch (err: any) {
     console.error('Firebase test connection failed:', err);
     let msg = err.message || 'Connection failed';
     if (msg.includes('permission-denied') || msg.includes('missing or insufficient permissions')) {
-      msg = 'Permission denied: Please ensure your Firestore Security Rules allow read/write (e.g. Test Mode).';
+      msg = 'Permission denied: Please ensure your Firestore Security Rules allow read/write.';
     }
     return { success: false, message: msg };
   }
@@ -155,7 +315,7 @@ export function subscribeToCloudModels(
   if (!db) return null;
 
   try {
-    const colRef = collection(db, COLLECTION_NAME);
+    const colRef = collection(db, COLLECTION_MODELS);
     const q = query(colRef, orderBy('createdAt', 'desc'));
 
     return onSnapshot(
@@ -172,6 +332,8 @@ export function subscribeToCloudModels(
             thumbnailUrl: data.thumbnailUrl || undefined,
             createdAt: Number(data.createdAt) || Date.now(),
             updatedAt: Number(data.updatedAt) || Date.now(),
+            createdBy: data.createdBy || 'Default Fleet',
+            createdById: data.createdById || undefined,
             isDefault: !!data.isDefault,
             serverSynced: true,
             tags: data.tags || [],
@@ -204,19 +366,36 @@ export function subscribeToCloudModels(
 /**
  * Save or insert model into Firebase Firestore.
  */
-export async function saveModelToCloud(model: ModelItem): Promise<boolean> {
+export async function saveModelToCloud(
+  model: ModelItem,
+  userEmail?: string,
+  userId?: string
+): Promise<boolean> {
   const db = getFirestoreDB();
   if (!db) return false;
 
   try {
-    const docRef = doc(db, COLLECTION_NAME, model.id);
+    let cloudFileUrl = model.fileUrl;
+
+    // If binary blob is present and URL is local object URL, upload to Firebase Storage
+    if (model.fileBlob && model.fileUrl.startsWith('blob:')) {
+      const storageUrl = await uploadModelBlob(model.id, model.name, model.fileBlob);
+      if (storageUrl) {
+        cloudFileUrl = storageUrl;
+        model.fileUrl = storageUrl;
+      }
+    }
+
+    const docRef = doc(db, COLLECTION_MODELS, model.id);
     const cleanRecord: Record<string, any> = {
       id: model.id,
       name: model.name,
       size: model.size,
-      fileUrl: model.fileUrl.startsWith('blob:') ? '' : model.fileUrl,
+      fileUrl: cloudFileUrl.startsWith('blob:') ? '' : cloudFileUrl,
       createdAt: model.createdAt || Date.now(),
       updatedAt: Date.now(),
+      createdBy: model.createdBy || userEmail || 'Authorized User',
+      createdById: model.createdById || userId || '',
       isDefault: !!model.isDefault,
       serverSynced: true,
       tags: model.tags || [],
@@ -228,6 +407,17 @@ export async function saveModelToCloud(model: ModelItem): Promise<boolean> {
     }
 
     await setDoc(docRef, cleanRecord, { merge: true });
+
+    // Record activity audit log
+    await logActivity(
+      'added',
+      model.id,
+      model.name,
+      model.createdBy || userEmail || 'Authorized User',
+      model.createdById || userId || '',
+      `Saved 3D model (${(model.size / (1024 * 1024)).toFixed(2)} MB)`
+    );
+
     return true;
   } catch (err) {
     console.warn('Failed to save model to Firestore:', err);
@@ -236,22 +426,50 @@ export async function saveModelToCloud(model: ModelItem): Promise<boolean> {
 }
 
 /**
- * Update an existing model in Firebase Firestore (e.g. Rename).
+ * Update an existing model in Firebase Firestore (e.g. Rename, Thumbnail).
  */
-export async function updateModelInCloud(id: string, updates: Partial<ModelItem>): Promise<boolean> {
+export async function updateModelInCloud(
+  id: string,
+  updates: Partial<ModelItem>,
+  userEmail?: string,
+  userId?: string,
+  logDescription?: string
+): Promise<boolean> {
   const db = getFirestoreDB();
   if (!db) return false;
 
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = doc(db, COLLECTION_MODELS, id);
     const cleanUpdates: Record<string, any> = {
       ...updates,
       updatedAt: Date.now(),
       serverSynced: true,
     };
-    delete cleanUpdates.fileBlob; // Don't upload Blob objects directly into Firestore documents
+    delete cleanUpdates.fileBlob;
 
     await updateDoc(docRef, cleanUpdates);
+
+    // Record activity audit log if naming or structural changes occurred
+    if (updates.name) {
+      await logActivity(
+        'renamed',
+        id,
+        updates.name,
+        userEmail || 'Authorized User',
+        userId || '',
+        logDescription || `Renamed model to "${updates.name}"`
+      );
+    } else if (logDescription) {
+      await logActivity(
+        'modified',
+        id,
+        updates.name || id,
+        userEmail || 'Authorized User',
+        userId || '',
+        logDescription
+      );
+    }
+
     return true;
   } catch (err) {
     console.warn('Failed to update model in Firestore:', err);
@@ -262,13 +480,37 @@ export async function updateModelInCloud(id: string, updates: Partial<ModelItem>
 /**
  * Delete a model from Firebase Firestore.
  */
-export async function deleteModelFromCloud(id: string): Promise<boolean> {
+export async function deleteModelFromCloud(
+  id: string,
+  modelName?: string,
+  userEmail?: string,
+  userId?: string
+): Promise<boolean> {
   const db = getFirestoreDB();
   if (!db) return false;
 
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
+    const docRef = doc(db, COLLECTION_MODELS, id);
     await deleteDoc(docRef);
+
+    // Try deleting object from Firebase Storage if applicable
+    const storage = getFirebaseStorage();
+    if (storage && modelName) {
+      const cleanFileName = modelName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fileRef = storageRef(storage, `models/${id}/${cleanFileName}`);
+      deleteObject(fileRef).catch(() => {});
+    }
+
+    // Record activity audit log
+    await logActivity(
+      'deleted',
+      id,
+      modelName || id,
+      userEmail || 'Authorized User',
+      userId || '',
+      `Deleted model "${modelName || id}" from cloud database`
+    );
+
     return true;
   } catch (err) {
     console.warn('Failed to delete model from Firestore:', err);
@@ -284,7 +526,7 @@ export async function getAllModelsFromCloud(): Promise<ModelItem[]> {
   if (!db) return [];
 
   try {
-    const colRef = collection(db, COLLECTION_NAME);
+    const colRef = collection(db, COLLECTION_MODELS);
     const q = query(colRef, orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
 
@@ -299,6 +541,8 @@ export async function getAllModelsFromCloud(): Promise<ModelItem[]> {
         thumbnailUrl: data.thumbnailUrl,
         createdAt: Number(data.createdAt) || Date.now(),
         updatedAt: Number(data.updatedAt) || Date.now(),
+        createdBy: data.createdBy || 'Default Fleet',
+        createdById: data.createdById || undefined,
         isDefault: !!data.isDefault,
         serverSynced: true,
         tags: data.tags || [],
@@ -319,5 +563,83 @@ export async function getAllModelsFromCloud(): Promise<ModelItem[]> {
   } catch (err) {
     console.warn('Failed to fetch models from Firestore:', err);
     return [];
+  }
+}
+
+/**
+ * Log an audit action to Firestore.
+ */
+export async function logActivity(
+  action: 'added' | 'modified' | 'deleted' | 'renamed',
+  modelId: string,
+  modelName: string,
+  userEmail: string,
+  userId?: string,
+  details?: string
+): Promise<void> {
+  const db = getFirestoreDB();
+  if (!db) return;
+
+  try {
+    const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const logDoc = doc(db, COLLECTION_LOGS, logId);
+    const entry: ActivityLog = {
+      id: logId,
+      action,
+      modelId,
+      modelName,
+      userEmail: userEmail || 'Authorized User',
+      userId: userId || '',
+      timestamp: Date.now(),
+      details: details || '',
+    };
+    await setDoc(logDoc, entry);
+  } catch (err) {
+    console.warn('Could not record activity log in Firestore:', err);
+  }
+}
+
+/**
+ * Subscribe to real-time activity logs.
+ */
+export function subscribeToActivityLogs(
+  onUpdate: (logs: ActivityLog[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe | null {
+  const db = getFirestoreDB();
+  if (!db) return null;
+
+  try {
+    const colRef = collection(db, COLLECTION_LOGS);
+    const q = query(colRef, orderBy('timestamp', 'desc'), limit(150));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const logs: ActivityLog[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data();
+          logs.push({
+            id: data.id || d.id,
+            action: data.action || 'modified',
+            modelId: data.modelId || '',
+            modelName: data.modelName || 'Model',
+            userEmail: data.userEmail || 'Authorized User',
+            userId: data.userId || '',
+            timestamp: Number(data.timestamp) || Date.now(),
+            details: data.details || '',
+          });
+        });
+        onUpdate(logs);
+      },
+      (err) => {
+        console.warn('Activity logs subscription error:', err);
+        onError?.(err);
+      }
+    );
+  } catch (err: any) {
+    console.warn('Failed to listen for activity logs:', err);
+    onError?.(err);
+    return null;
   }
 }
