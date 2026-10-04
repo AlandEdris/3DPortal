@@ -8,6 +8,8 @@ import {
   updateDoc,
   deleteDoc,
   getDocs,
+  getDoc,
+  arrayUnion,
   onSnapshot,
   Unsubscribe,
   query,
@@ -842,4 +844,50 @@ export function subscribeToActivityLogs(
       }
     };
   }
+}
+
+/**
+ * Mark a model as seen by the user in Firestore (voxelorbit_users/{userId}).
+ */
+export async function markModelSeenByUser(userId: string, modelId: string): Promise<void> {
+  if (!userId || !modelId) return;
+  const db = getFirestoreDB();
+  if (!db) return;
+
+  try {
+    const userDocRef = doc(db, COLLECTION_USERS, userId);
+    await setDoc(
+      userDocRef,
+      {
+        seenModelIds: arrayUnion(modelId),
+        lastSeenAt: Date.now(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not record seenModelId in Firestore:', err);
+  }
+}
+
+/**
+ * Fetch seen model IDs for a user from Firestore.
+ */
+export async function getSeenModelIdsForUser(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  const db = getFirestoreDB();
+  if (!db) return [];
+
+  try {
+    const userDocRef = doc(db, COLLECTION_USERS, userId);
+    const snap = await getDoc(userDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.seenModelIds)) {
+        return data.seenModelIds;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch seenModelIds from Firestore:', err);
+  }
+  return [];
 }

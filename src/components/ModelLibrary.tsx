@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Upload,
   Plus,
@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { ModelItem, formatModelDisplayName } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
-import { getModelCreatorDisplayName } from '../utils/firebase';
+import { getModelCreatorDisplayName, markModelSeenByUser, getSeenModelIdsForUser } from '../utils/firebase';
 
 interface ModelLibraryProps {
   models: ModelItem[];
@@ -72,6 +72,92 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const [editNameValue, setEditNameValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [gameFilter, setGameFilter] = useState<'all' | 'game' | 'pending'>('all');
+
+  // Per-user tracking for viewed models
+  const userStorageKey = `3dportal_seen_models_${currentUser?.uid || 'guest'}`;
+  const [seenModelIds, setSeenModelIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(`3dportal_seen_models_${currentUser?.uid || 'guest'}`);
+      if (stored) {
+        return new Set(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.warn('Failed to load seen models from localStorage:', e);
+    }
+    return new Set<string>();
+  });
+
+  // Re-sync seen models when currentUser changes or logs in
+  useEffect(() => {
+    const key = `3dportal_seen_models_${currentUser?.uid || 'guest'}`;
+    let localSet = new Set<string>();
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        localSet = new Set(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+    setSeenModelIds(localSet);
+
+    // If logged in, fetch from Firestore to merge cross-device seen models
+    if (currentUser?.uid) {
+      getSeenModelIdsForUser(currentUser.uid).then((cloudIds) => {
+        if (cloudIds && cloudIds.length > 0) {
+          setSeenModelIds((prev) => {
+            const merged = new Set([...prev, ...cloudIds]);
+            try {
+              localStorage.setItem(key, JSON.stringify(Array.from(merged)));
+            } catch (err) {}
+            return merged;
+          });
+        }
+      });
+    }
+  }, [currentUser?.uid]);
+
+  // Check if a model is "NEW" for the current user
+  const isModelNew = (model: ModelItem): boolean => {
+    // 1. If clicked / seen by this user, it's no longer new
+    if (seenModelIds.has(model.id)) return false;
+
+    // 2. Default starter fleet models are not newly added by users
+    if (model.isDefault || model.isSample) return false;
+
+    // 3. If added by the current user, don't show NEW for them
+    const isCreatedByMe = Boolean(
+      (currentUser?.uid && model.createdById && model.createdById === currentUser.uid) ||
+      (currentUser?.email && model.createdBy && model.createdBy.toLowerCase() === currentUser.email.toLowerCase())
+    );
+    if (isCreatedByMe) return false;
+
+    // 4. It's a new plane added by another user and not yet clicked by this user
+    return true;
+  };
+
+  // When user clicks the plane record, mark it as seen so it disappears ONLY for this user
+  const handleSelectModel = (model: ModelItem) => {
+    if (isModelNew(model)) {
+      setSeenModelIds((prev) => {
+        const next = new Set(prev);
+        next.add(model.id);
+        try {
+          const key = `3dportal_seen_models_${currentUser?.uid || 'guest'}`;
+          localStorage.setItem(key, JSON.stringify(Array.from(next)));
+        } catch (err) {
+          console.warn('Failed to save seen models:', err);
+        }
+        return next;
+      });
+
+      if (currentUser?.uid) {
+        markModelSeenByUser(currentUser.uid, model.id);
+      }
+    }
+
+    onSelectModel(model);
+  };
 
   const filteredModels = models.filter((m) => {
     const matchesSearch =
@@ -164,6 +250,8 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
     document.body.removeChild(a);
   };
 
+  const hasAnyNewModels = models.some((m) => isModelNew(m));
+
   if (!isOpen) {
     return (
       <aside className="fixed left-0 top-20 z-30 select-none animate-fade-in">
@@ -174,7 +262,15 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           title="Expand Model Library (VS Toolbox)"
         >
           <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-transform" />
-          <FileBox className="w-4 h-4 text-sky-400" />
+          <div className="relative">
+            <FileBox className="w-4 h-4 text-sky-400" />
+            {hasAnyNewModels && (
+              <span className="absolute -top-1 -right-1 flex h-2 w-2" title="New planes available">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 ring-1 ring-neutral-950"></span>
+              </span>
+            )}
+          </div>
           <span className="text-[11px] font-semibold tracking-wider uppercase [writing-mode:vertical-rl] rotate-180 py-2 text-neutral-300 group-hover:text-white font-mono">
             Model Library ({models.length})
           </span>
@@ -191,6 +287,12 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
           <FileBox className="w-4 h-4 text-sky-400" />
           <h2 className="text-sm font-semibold text-neutral-100">Model Library</h2>
           <span className="text-xs text-neutral-400 font-mono">({models.length})</span>
+          {hasAnyNewModels && (
+            <span className="flex h-2 w-2 relative" title="New planes available">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -338,7 +440,8 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
             return (
               <div
                 key={model.id}
-                onClick={() => onSelectModel(model)}
+                id={`model-card-${model.id}`}
+                onClick={() => handleSelectModel(model)}
                 className={`group relative p-2.5 rounded-xl border cursor-pointer transition-all overflow-hidden ${
                   isSelected
                     ? model.inNeoGame
@@ -360,6 +463,13 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                       />
                     ) : (
                       <Plane className="w-5 h-5 text-sky-400/80" />
+                    )}
+                    {/* Red Dot indicator on thumbnail if new */}
+                    {isModelNew(model) && (
+                      <span className="absolute top-1 right-1 flex h-2.5 w-2.5 z-10" title="New plane added!">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 ring-2 ring-neutral-950"></span>
+                      </span>
                     )}
                   </div>
 
@@ -401,7 +511,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                       </form>
                     ) : (
                       <>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p
                             className={`text-xs font-semibold truncate ${
                               isSelected ? 'text-sky-300' : 'text-neutral-200'
@@ -410,6 +520,20 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                           >
                             {formatModelDisplayName(model.name)}
                           </p>
+                          {/* Tag NEW on the record */}
+                          {isModelNew(model) && (
+                            <span
+                              id={`tag-new-${model.id}`}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0 shadow-sm shadow-rose-950/40"
+                              title="New plane added by team member!"
+                            >
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
+                              </span>
+                              NEW
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 mt-1 font-mono">
