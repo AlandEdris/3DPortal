@@ -73,6 +73,22 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Dynamic prop refs to avoid stale closures in the continuous requestAnimationFrame loop
+  const autoRotateRef = useRef(autoRotate);
+  autoRotateRef.current = autoRotate;
+  const autoRotateSpeedRef = useRef(autoRotateSpeed);
+  autoRotateSpeedRef.current = autoRotateSpeed;
+  const isPlayingAnimationRef = useRef(isPlayingAnimation);
+  isPlayingAnimationRef.current = isPlayingAnimation;
+  const animationSpeedRef = useRef(animationSpeed);
+  animationSpeedRef.current = animationSpeed;
+  const activeAnimationIndexRef = useRef(activeAnimationIndex);
+  activeAnimationIndexRef.current = activeAnimationIndex;
+  const isOrthographicRef = useRef(isOrthographic);
+  isOrthographicRef.current = isOrthographic;
+  const onAnimationTimeUpdateRef = useRef(onAnimationTimeUpdate);
+  onAnimationTimeUpdateRef.current = onAnimationTimeUpdate;
+
   // Three.js instances
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -217,27 +233,27 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
       const delta = clockRef.current.getDelta();
 
       // Update animation mixer
-      if (mixerRef.current && isPlayingAnimation) {
-        mixerRef.current.update(delta * animationSpeed);
+      if (mixerRef.current && isPlayingAnimationRef.current) {
+        mixerRef.current.update(delta * animationSpeedRef.current);
 
-        const currentAction = animationActionsRef.current[activeAnimationIndex];
-        if (currentAction && onAnimationTimeUpdate) {
+        const currentAction = animationActionsRef.current[activeAnimationIndexRef.current];
+        if (currentAction && onAnimationTimeUpdateRef.current) {
           const clip = currentAction.getClip();
           const duration = clip.duration;
           const time = currentAction.time % duration;
-          onAnimationTimeUpdate(time / duration, time, duration);
+          onAnimationTimeUpdateRef.current(time / duration, time, duration);
         }
       }
 
       // Update controls
       if (controlsRef.current) {
-        controlsRef.current.autoRotate = autoRotate;
-        controlsRef.current.autoRotateSpeed = autoRotateSpeed;
+        controlsRef.current.autoRotate = autoRotateRef.current;
+        controlsRef.current.autoRotateSpeed = autoRotateSpeedRef.current;
         controlsRef.current.update();
       }
 
       // Active camera
-      const activeCamera = isOrthographic ? orthoCameraRef.current : persCameraRef.current;
+      const activeCamera = isOrthographicRef.current ? orthoCameraRef.current : persCameraRef.current;
       if (activeCamera && sceneRef.current && rendererRef.current) {
         rendererRef.current.render(sceneRef.current, activeCamera);
       }
@@ -265,6 +281,15 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
       renderer.dispose();
     };
   }, []);
+
+  // Sync autoRotate and autoRotateSpeed immediately with OrbitControls
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.autoRotate = autoRotate;
+      controlsRef.current.autoRotateSpeed = autoRotateSpeed;
+      controlsRef.current.update();
+    }
+  }, [autoRotate, autoRotateSpeed]);
 
   // 2. Setup Lighting Presets
   useEffect(() => {
@@ -626,12 +651,15 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
     if (!modelGroupRef.current) return;
 
     const clayMaterial = new THREE.MeshStandardMaterial({
-      color: 0xeeeeee,
-      roughness: 0.9,
+      color: 0xdddddd,
+      roughness: 0.85,
       metalness: 0.05,
+      side: THREE.DoubleSide,
     });
 
-    const normalMaterial = new THREE.MeshNormalMaterial();
+    const normalMaterial = new THREE.MeshNormalMaterial({
+      side: THREE.DoubleSide,
+    });
 
     const xrayMaterial = new THREE.MeshPhysicalMaterial({
       color: 0x38bdf8,
@@ -640,20 +668,25 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
       transparent: true,
       opacity: 0.45,
       transmission: 0.6,
-      wireframe: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
     });
 
     modelGroupRef.current.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         const mesh = obj as THREE.Mesh;
-        const original = originalMaterialsRef.current.get(mesh.uuid);
+        let original = originalMaterialsRef.current.get(mesh.uuid);
+
+        if (!original && mesh.material) {
+          originalMaterialsRef.current.set(mesh.uuid, mesh.material);
+          original = mesh.material;
+        }
 
         if (!original) return;
 
         if (renderMode === 'shaded') {
           mesh.material = original;
         } else if (renderMode === 'wireframe') {
-          // If already single material, set wireframe flag
           if (Array.isArray(original)) {
             mesh.material = original.map((m) => {
               const clone = m.clone();
@@ -685,22 +718,52 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
 
   // 10. Handle Reset View Trigger
   useEffect(() => {
-    if (resetViewTrigger && modelBounds) {
-      frameModel(modelBounds);
+    if (resetViewTrigger) {
+      if (modelBounds) {
+        frameModel(modelBounds);
+      } else if (modelGroupRef.current && modelGroupRef.current.children.length > 0) {
+        const box = new THREE.Box3().setFromObject(modelGroupRef.current);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const sphere = new THREE.Sphere();
+        box.getBoundingSphere(sphere);
+        frameModel({ center, radius: Math.max(sphere.radius, 1) });
+      }
     }
   }, [resetViewTrigger, modelBounds, frameModel]);
 
   // 11. Handle Camera View Presets (Front, Back, Top, Isometric, etc.)
   useEffect(() => {
-    if (!cameraPresetTrigger || !modelBounds || !controlsRef.current || !persCameraRef.current) return;
+    if (!cameraPresetTrigger || !controlsRef.current || !persCameraRef.current) return;
 
-    const { center, radius } = modelBounds;
-    controlsRef.current.target.copy(center);
+    // Get bounds from state or compute dynamically from modelGroupRef
+    let center = modelBounds?.center;
+    let radius = modelBounds?.radius;
 
-    const fov = persCameraRef.current.fov * (Math.PI / 180);
+    if (!center || !radius) {
+      if (modelGroupRef.current && modelGroupRef.current.children.length > 0) {
+        const box = new THREE.Box3().setFromObject(modelGroupRef.current);
+        center = new THREE.Vector3();
+        box.getCenter(center);
+        const sphere = new THREE.Sphere();
+        box.getBoundingSphere(sphere);
+        radius = Math.max(sphere.radius, 1);
+      } else {
+        center = new THREE.Vector3(0, 0, 0);
+        radius = 3;
+      }
+    }
+
+    const controls = controlsRef.current;
+    const camera = persCameraRef.current;
+
+    controls.target.copy(center);
+
+    const fov = camera.fov * (Math.PI / 180);
     const distance = Math.abs(radius / Math.sin(fov / 2)) * 1.85;
 
     let targetOffset = new THREE.Vector3();
+    camera.up.set(0, 1, 0);
 
     switch (cameraPresetTrigger.preset) {
       case 'iso':
@@ -713,10 +776,12 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
         targetOffset.set(0, 0, -distance);
         break;
       case 'top':
-        targetOffset.set(0, distance, 0.001);
+        targetOffset.set(0, distance, 0.0001);
+        camera.up.set(0, 0, -1);
         break;
       case 'bottom':
-        targetOffset.set(0, -distance, 0.001);
+        targetOffset.set(0, -distance, 0.0001);
+        camera.up.set(0, 0, 1);
         break;
       case 'left':
         targetOffset.set(-distance, 0, 0);
@@ -727,16 +792,17 @@ export const Viewer3D: React.FC<Viewer3DProps> = ({
     }
 
     const newPos = center.clone().add(targetOffset);
-    persCameraRef.current.position.copy(newPos);
-    persCameraRef.current.lookAt(center);
+    camera.position.copy(newPos);
+    camera.lookAt(center);
 
     if (orthoCameraRef.current) {
       orthoCameraRef.current.position.copy(newPos);
+      orthoCameraRef.current.up.copy(camera.up);
       orthoCameraRef.current.lookAt(center);
       orthoCameraRef.current.updateProjectionMatrix();
     }
 
-    controlsRef.current.update();
+    controls.update();
   }, [cameraPresetTrigger, modelBounds]);
 
   // 12. Handle Animation Play / Pause / Clip change / Scrubber
