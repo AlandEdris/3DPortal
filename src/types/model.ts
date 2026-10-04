@@ -29,6 +29,9 @@ export interface ModelItem {
   isDefault?: boolean;
   serverSynced?: boolean;
   tags?: string[];
+  inNeoGame?: boolean;
+  neoGameAddedAt?: number;
+  neoGameAddedBy?: string;
   metrics: ModelMetrics;
 }
 

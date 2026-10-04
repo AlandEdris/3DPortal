@@ -20,6 +20,8 @@ import {
   Download,
   Database,
   Trash2,
+  Gamepad2,
+  BadgeCheck,
 } from 'lucide-react';
 import {
   LightingPreset,
@@ -77,6 +79,7 @@ interface InspectorPanelProps {
   onRequestDelete?: (model: ModelItem) => void;
   userProfiles?: Record<string, string>;
   currentUser?: { uid?: string; email?: string | null; displayName?: string | null } | null;
+  onToggleNeoGame?: (id: string) => void;
 }
 
 export const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -122,6 +125,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onRequestDelete,
   userProfiles,
   currentUser,
+  onToggleNeoGame,
 }) => {
   const [activeTab, setActiveTab] = useState<'inspect' | 'studio' | 'materials' | 'animations'>('inspect');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['root']));
@@ -427,6 +431,73 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         })
                       : 'Initial Provision'}
                   </span>
+                </div>
+
+                {/* Neo Game Marker Checkbox & Record */}
+                <div className="pt-2 mt-1 border-t border-neutral-800/80">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="chk-inspect-neogame"
+                      className="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-neutral-200"
+                    >
+                      <input
+                        type="checkbox"
+                        id="chk-inspect-neogame"
+                        checked={!!currentModel?.inNeoGame}
+                        onChange={() => currentModel && onToggleNeoGame?.(currentModel.id)}
+                        className="w-4 h-4 rounded border-neutral-700 bg-neutral-950 text-emerald-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-emerald-500"
+                      />
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <Gamepad2 className={`w-3.5 h-3.5 ${currentModel?.inNeoGame ? 'text-emerald-400' : 'text-neutral-500'}`} />
+                        <span>Added to Our Neo Game</span>
+                      </span>
+                    </label>
+
+                    {currentModel?.inNeoGame ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        In Game Roster
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-800 text-neutral-400 border border-neutral-700 font-mono">
+                        Not in Game
+                      </span>
+                    )}
+                  </div>
+
+                  {currentModel?.inNeoGame ? (
+                    <div className="mt-2 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20 backdrop-blur-sm space-y-1.5 text-[10px] font-mono text-neutral-300">
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-400">Game Record:</span>
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                          <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          Active Neo Game Asset
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-400">Marked By:</span>
+                        <span className="text-neutral-200">{currentModel.neoGameAddedBy || 'Authorized User'}</span>
+                      </div>
+                      {currentModel.neoGameAddedAt && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-400">Marked On:</span>
+                          <span className="text-neutral-200">
+                            {new Date(currentModel.neoGameAddedAt).toLocaleString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-neutral-500 italic">
+                      Check the box above to mark this aircraft as imported into Our Neo Game project.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

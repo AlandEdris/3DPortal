@@ -718,6 +718,72 @@ export default function App() {
     [models, currentModel, currentUser, activeUserNickname, showToast]
   );
 
+  // 6b. Toggle Neo Game Deployment Marker
+  const handleToggleNeoGame = useCallback(
+    async (id: string) => {
+      const targetModel = models.find((m) => m.id === id);
+      if (!targetModel) return;
+
+      const nextStatus = !targetModel.inNeoGame;
+      const userDisplayName =
+        activeUserNickname?.trim() ||
+        currentUser?.email ||
+        'Authorized User';
+
+      const updates: Partial<ModelItem> = {
+        inNeoGame: nextStatus,
+        neoGameAddedAt: nextStatus ? Date.now() : undefined,
+        neoGameAddedBy: nextStatus ? userDisplayName : undefined,
+        updatedAt: Date.now(),
+      };
+
+      setModels((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
+      );
+
+      if (currentModel?.id === id) {
+        setCurrentModel((prev) => (prev ? { ...prev, ...updates } : null));
+      }
+
+      await updateModelInDB(id, updates);
+
+      const planeName = formatModelDisplayName(targetModel.name);
+
+      // Record activity log
+      await logActivity(
+        'modified',
+        id,
+        planeName,
+        userDisplayName,
+        currentUser?.uid,
+        nextStatus
+          ? `Marked plane "${planeName}" as added to Neo Game 🎮`
+          : `Removed plane "${planeName}" from Neo Game roster`
+      );
+
+      if (isCloudConfigured()) {
+        updateModelInCloud(
+          id,
+          updates,
+          userDisplayName,
+          currentUser?.uid,
+          nextStatus
+            ? `Marked plane "${planeName}" as added to Neo Game 🎮`
+            : `Removed plane "${planeName}" from Neo Game roster`
+        ).catch((err) =>
+          console.warn('Cloud sync error on neo game toggle:', err)
+        );
+      }
+
+      showToast(
+        nextStatus
+          ? `✓ "${planeName}" marked as added to Neo Game!`
+          : `"${planeName}" removed from Neo Game roster.`
+      );
+    },
+    [models, currentModel, currentUser, activeUserNickname, showToast]
+  );
+
   // 7. Reload Default Aircraft Fleet
   const handleLoadDefaults = useCallback(async () => {
     showToast('Restoring real aircraft fleet...');
@@ -934,6 +1000,7 @@ export default function App() {
           userProfiles={userProfiles}
           currentUser={currentUser}
           dbStatus={dbStatus}
+          onToggleNeoGame={handleToggleNeoGame}
         />
 
         {/* Center: 3D WebGL Viewport */}
@@ -1066,6 +1133,7 @@ export default function App() {
           onRequestDelete={(model) => setModelToDelete(model)}
           userProfiles={userProfiles}
           currentUser={currentUser}
+          onToggleNeoGame={handleToggleNeoGame}
         />
       </main>
 

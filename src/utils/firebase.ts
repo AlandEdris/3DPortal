@@ -479,6 +479,9 @@ export function subscribeToCloudModels(
             isDefault: !!data.isDefault,
             serverSynced: true,
             tags: data.tags || [],
+            inNeoGame: !!data.inNeoGame,
+            neoGameAddedAt: data.neoGameAddedAt || undefined,
+            neoGameAddedBy: data.neoGameAddedBy || undefined,
             metrics: data.metrics || {
               triangles: 0,
               vertices: 0,
@@ -542,6 +545,9 @@ export async function saveModelToCloud(
       isDefault: !!model.isDefault,
       serverSynced: true,
       tags: model.tags || [],
+      inNeoGame: !!model.inNeoGame,
+      neoGameAddedAt: model.neoGameAddedAt || null,
+      neoGameAddedBy: model.neoGameAddedBy || null,
       metrics: model.metrics || {},
     };
 
@@ -689,6 +695,9 @@ export async function getAllModelsFromCloud(): Promise<ModelItem[]> {
         isDefault: !!data.isDefault,
         serverSynced: true,
         tags: data.tags || [],
+        inNeoGame: !!data.inNeoGame,
+        neoGameAddedAt: data.neoGameAddedAt || undefined,
+        neoGameAddedBy: data.neoGameAddedBy || undefined,
         metrics: data.metrics || {
           triangles: 0,
           vertices: 0,

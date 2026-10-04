@@ -17,6 +17,8 @@ import {
   Plane,
   User,
   Clock,
+  Gamepad2,
+  BadgeCheck,
 } from 'lucide-react';
 import { ModelItem, formatModelDisplayName } from '../types/model';
 import { exportModelsMetadataJSON } from '../utils/db';
@@ -38,6 +40,7 @@ interface ModelLibraryProps {
   userProfiles?: Record<string, string>;
   currentUser?: { uid?: string; email?: string | null; displayName?: string | null } | null;
   dbStatus?: { online: boolean; message: string };
+  onToggleNeoGame?: (id: string) => void;
 }
 
 export const ModelLibrary: React.FC<ModelLibraryProps> = ({
@@ -56,6 +59,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   userProfiles,
   currentUser,
   dbStatus = { online: true, message: 'Database Connected' },
+  onToggleNeoGame,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,10 +67,17 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [gameFilter, setGameFilter] = useState<'all' | 'game' | 'pending'>('all');
 
-  const filteredModels = models.filter((m) =>
-    m.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredModels = models.filter((m) => {
+    const matchesSearch =
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.fileName && m.fileName.toLowerCase().includes(searchQuery.toLowerCase()));
+    if (!matchesSearch) return false;
+    if (gameFilter === 'game') return !!m.inNeoGame;
+    if (gameFilter === 'pending') return !m.inNeoGame;
+    return true;
+  });
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -229,7 +240,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
 
       {/* Search Input */}
       {models.length > 2 && (
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-2 space-y-1.5">
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
@@ -239,6 +250,48 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-lg text-xs text-neutral-200 placeholder-neutral-400 focus:outline-none focus:border-sky-500 transition-colors"
             />
+          </div>
+
+          {/* Quick Filter: All vs Neo Game Roster */}
+          <div className="flex items-center gap-1 text-[11px] pt-0.5">
+            <button
+              type="button"
+              id="btn-filter-all"
+              onClick={() => setGameFilter('all')}
+              className={`flex-1 py-1 rounded-md font-medium transition-colors ${
+                gameFilter === 'all'
+                  ? 'bg-neutral-800 text-white font-semibold'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+              }`}
+            >
+              All ({models.length})
+            </button>
+            <button
+              type="button"
+              id="btn-filter-game"
+              onClick={() => setGameFilter('game')}
+              className={`flex-1 py-1 rounded-md font-medium flex items-center justify-center gap-1 transition-colors ${
+                gameFilter === 'game'
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-semibold'
+                  : 'text-neutral-400 hover:text-emerald-400 hover:bg-neutral-900'
+              }`}
+              title="Planes marked as added to Neo Game"
+            >
+              <Gamepad2 className="w-3 h-3" />
+              <span>In Game ({models.filter((m) => m.inNeoGame).length})</span>
+            </button>
+            <button
+              type="button"
+              id="btn-filter-pending"
+              onClick={() => setGameFilter('pending')}
+              className={`flex-1 py-1 rounded-md font-medium transition-colors ${
+                gameFilter === 'pending'
+                  ? 'bg-neutral-800 text-amber-300 font-semibold'
+                  : 'text-neutral-400 hover:text-amber-300 hover:bg-neutral-900'
+              }`}
+            >
+              Pending ({models.filter((m) => !m.inNeoGame).length})
+            </button>
           </div>
         </div>
       )}
@@ -274,7 +327,7 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
               >
                 <div className="flex items-start gap-2.5">
                   {/* Thumbnail / 3D Icon */}
-                  <div className="w-11 h-11 rounded-lg bg-neutral-950 border border-neutral-800 flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="relative w-11 h-11 rounded-lg bg-neutral-950 border border-neutral-800 flex items-center justify-center shrink-0 overflow-hidden">
                     {model.thumbnailUrl ? (
                       <img
                         src={model.thumbnailUrl}
@@ -283,6 +336,12 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                       />
                     ) : (
                       <Plane className="w-5 h-5 text-sky-400/80" />
+                    )}
+                    {model.inNeoGame && (
+                      <span
+                        className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-neutral-950 shadow-sm shadow-emerald-400"
+                        title="Added to Neo Game"
+                      />
                     )}
                   </div>
 
@@ -324,14 +383,25 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                       </form>
                     ) : (
                       <>
-                        <p
-                          className={`text-xs font-semibold truncate ${
-                            isSelected ? 'text-sky-300' : 'text-neutral-200'
-                          }`}
-                          title={model.fileName ? `${formatModelDisplayName(model.name)} (File: ${model.fileName})` : formatModelDisplayName(model.name)}
-                        >
-                          {formatModelDisplayName(model.name)}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p
+                            className={`text-xs font-semibold truncate ${
+                              isSelected ? 'text-sky-300' : 'text-neutral-200'
+                            }`}
+                            title={model.fileName ? `${formatModelDisplayName(model.name)} (File: ${model.fileName})` : formatModelDisplayName(model.name)}
+                          >
+                            {formatModelDisplayName(model.name)}
+                          </p>
+                          {model.inNeoGame && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 shadow-sm shadow-emerald-950"
+                              title={`Verified in Neo Game roster (${model.neoGameAddedBy || 'Team'})`}
+                            >
+                              <Gamepad2 className="w-2.5 h-2.5" />
+                              IN GAME
+                            </span>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 mt-1 font-mono">
                           <span>{formatFileSize(model.size)}</span>
@@ -339,10 +409,10 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                           <span>{formatTriangles(model.metrics?.triangles || 0)} tris</span>
                         </div>
 
-                        {/* Author & Timestamp */}
-                        <div className="flex items-center gap-2 text-[10px] text-neutral-400 mt-1.5 pt-1.5 border-t border-neutral-800/60">
+                        {/* Author, Timestamp & Neo Game Marker Checkbox */}
+                        <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-neutral-400 mt-1.5 pt-1.5 border-t border-neutral-800/60">
                           <div
-                            className="flex items-center gap-1 truncate max-w-[130px]"
+                            className="flex items-center gap-1 truncate max-w-[100px]"
                             title={`Added by: ${getModelCreatorDisplayName(model, userProfiles, currentUser)}`}
                           >
                             <User className="w-3 h-3 text-sky-400 shrink-0" />
@@ -363,6 +433,34 @@ export const ModelLibrary: React.FC<ModelLibraryProps> = ({
                               })}
                             </span>
                           </div>
+                          <span className="text-neutral-600">·</span>
+                          {/* Marker Checkbox next to Created Date */}
+                          <label
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 cursor-pointer select-none px-1 py-0.5 rounded hover:bg-neutral-800/80 transition-colors shrink-0 group/marker"
+                            title={
+                              model.inNeoGame
+                                ? `Added to Our Neo Game by ${model.neoGameAddedBy || 'Team'}${model.neoGameAddedAt ? ` on ${new Date(model.neoGameAddedAt).toLocaleDateString()}` : ''}`
+                                : 'Check this box to mark plane as added to Our Neo Game'
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              id={`chk-neogame-${model.id}`}
+                              checked={!!model.inNeoGame}
+                              onChange={() => onToggleNeoGame?.(model.id)}
+                              className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-950 text-emerald-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-emerald-500 shrink-0"
+                            />
+                            <span
+                              className={`text-[10px] font-medium transition-colors ${
+                                model.inNeoGame
+                                  ? 'text-emerald-400 font-semibold'
+                                  : 'text-neutral-500 group-hover/marker:text-neutral-400'
+                              }`}
+                            >
+                              Neo Game
+                            </span>
+                          </label>
                         </div>
                       </>
                     )}
